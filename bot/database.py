@@ -23,7 +23,30 @@ async def init_db(path: str) -> None:
     await _db.execute(
         "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
     )
+    await _db.execute(
+        "CREATE TABLE IF NOT EXISTS action_log ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, text TEXT NOT NULL)"
+    )
     await _db.commit()
+
+
+async def add_log(text: str) -> None:
+    await _db.execute(
+        "INSERT INTO action_log (ts, text) VALUES (?, ?)", (int(time.time()), text)
+    )
+    # Держим только последние 500 записей, чтобы БД не росла бесконечно
+    await _db.execute(
+        "DELETE FROM action_log WHERE id NOT IN "
+        "(SELECT id FROM action_log ORDER BY id DESC LIMIT 500)"
+    )
+    await _db.commit()
+
+
+async def get_recent_logs(limit: int = 15) -> list[tuple[int, str]]:
+    async with _db.execute(
+        "SELECT ts, text FROM action_log ORDER BY id DESC LIMIT ?", (limit,)
+    ) as cur:
+        return list(await cur.fetchall())
 
 
 async def get_setting(key: str) -> str | None:

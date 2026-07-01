@@ -13,6 +13,7 @@ from typing import Awaitable
 from aiogram import Bot
 from aiogram.types import ChatPermissions, InlineKeyboardMarkup
 
+from bot import database as db
 from bot.config import config
 from bot.utils.access import is_bot_admin
 
@@ -119,7 +120,11 @@ async def notify_admins(
 
 
 async def log_action(bot: Bot, log_chat_id: int | None, text: str) -> None:
-    """Дублирует событие в ЛС всем админам и в лог-чат (если задан)."""
+    """Пишет событие в историю (БД), в ЛС всем админам и в лог-чат (если задан)."""
+    try:
+        await db.add_log(text)
+    except Exception:
+        pass
     await notify_admins(bot, text)
     if log_chat_id:
         await _safe(bot.send_message(log_chat_id, text))

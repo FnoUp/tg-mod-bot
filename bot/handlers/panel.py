@@ -5,6 +5,7 @@
 не нужно листать вверх. Все настройки применяются сразу, без рестарта.
 """
 import html
+from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatType
@@ -13,9 +14,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
+from bot import database as db
 from bot import settings_store as settings
 from bot.config import config
 from bot.utils.moderation import safe_delete
+
+PERM_TZ = timezone(timedelta(hours=5))  # Пермь = UTC+5
 
 router = Router(name="panel")
 router.message.filter(F.chat.type == ChatType.PRIVATE, F.from_user.id.in_(config.admin_ids))
@@ -88,6 +92,7 @@ async def render_main() -> tuple[str, InlineKeyboardMarkup]:
         [InlineKeyboardButton(text="⚠️ Слова: предупреждение", callback_data="m:words_warn")],
         [InlineKeyboardButton(text="🔗 Фильтры ссылок/спама", callback_data="m:filters")],
         [InlineKeyboardButton(text="🔢 Лимиты", callback_data="m:limits")],
+        [InlineKeyboardButton(text="🕓 История действий", callback_data="m:history")],
     ])
     return text, kb
 
@@ -119,7 +124,18 @@ async def render_modules() -> tuple[str, InlineKeyboardMarkup]:
         flag = _flag(await settings.get_bool(key))
         rows.append([InlineKeyboardButton(text=f"{title} — {flag}", callback_data=f"t:{key}:modules")])
     rows.append(_back_row())
-    text = "🎚 <b>Модули</b>\n\nНажми на модуль, чтобы включить или выключить его."
+    text = (
+        "🎚 <b>Модули</b>\n\n"
+        "🛡 <b>Антиспам</b> — удаляет ссылки и стоп-слова; за слово из «мгновенного» "
+        "списка сразу банит (тихо, без сообщений в чат).\n\n"
+        "🚨 <b>Антифлуд</b> — если человек шлёт сообщения слишком часто, временно "
+        "лишает его права писать (мьют).\n\n"
+        "🚪 <b>Антирейд</b> — при массовом входе людей за короткое время автоматически "
+        "ограничивает новичков и присылает тебе тревогу.\n\n"
+        "♻️ <b>Лимит повторов</b> — не даёт постить одно и то же сообщение больше "
+        "заданного числа раз (борьба с рекламщиками).\n\n"
+        "Нажми на модуль, чтобы включить или выключить его."
+    )
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -128,7 +144,9 @@ async def _render_wordlist(key: str, title: str, note: str, menu: str) -> tuple[
     listing = _esc(", ".join(words)) if words else "(список пуст)"
     text = f"{title}\n\n<b>Сейчас ({len(words)}):</b>\n{listing}\n\n{note}"
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✍️ Изменить список", callback_data=f"e:{key}:{menu}")],
+        [InlineKeyboardButton(text="➕ Добавить слова", callback_data=f"e:{key}:{menu}:add")],
+        [InlineKeyboardButton(text="✏️ Редактировать всё", callback_data=f"e:{key}:{menu}:rep")],
+        [InlineKeyboardButton(text="🗑 Очистить список", callback_data=f"clr:{key}:{menu}")],
         _back_row(),
     ])
     return text, kb
@@ -185,6 +203,24 @@ async def render_limits() -> tuple[str, InlineKeyboardMarkup]:
     return text, kb
 
 
+async def render_history() -> tuple[str, InlineKeyboardMarkup]:
+    entries = await db.get_recent_logs(15)
+    if not entries:
+        body = "Пока пусто — бот ещё не совершал действий."
+    else:
+        lines = []
+        for ts, entry in entries:
+            when = datetime.fromtimestamp(ts, PERM_TZ).strftime("%d.%m %H:%M")
+            lines.append(f"<b>{when}</b>  {_esc(entry)}")
+        body = "\n".join(lines)
+    text = "🕓 <b>История действий</b>\nПоследние 15 событий (время — Пермь):\n\n" + body
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Обновить", callback_data="m:history")],
+        _back_row(),
+    ])
+    return text, kb
+
+
 MENUS = {
     "main": render_main,
     "texts": render_texts,
@@ -193,6 +229,7 @@ MENUS = {
     "words_warn": render_words_warn,
     "filters": render_filters,
     "limits": render_limits,
+    "history": render_history,
 }
 
 
@@ -229,23 +266,41 @@ async def on_toggle(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("e:"))
 async def on_edit_start(callback: CallbackQuery, state: FSMContext) -> None:
-    _, key, menu = callback.data.split(":")
+    parts = callback.data.split(":")
+    key, menu = parts[1], parts[2]
+    mode = parts[3] if len(parts) > 3 else "rep"  # add | rep
     title, kind, _menu, hint = FIELDS[key]
     current = _esc(await settings.get(key))
     await state.set_state(Editing.value)
     await state.update_data(
-        key=key, menu=menu, kind=kind,
+        key=key, menu=menu, kind=kind, mode=mode,
         mid=callback.message.message_id, cid=callback.message.chat.id,
     )
+    if kind == "list" and mode == "add":
+        instr = "Пришли слова через запятую — они <b>добавятся</b> к текущим, старые сохранятся."
+    elif kind == "list":
+        instr = "Пришли <b>полный новый</b> список через запятую — старый будет заменён."
+    else:
+        instr = "Пришли новое значение сообщением."
     prompt = (
         f"✏️ <b>{title}</b>\n\n"
         f"<b>Сейчас:</b>\n{current}\n\n"
         f"ℹ️ {hint}\n\n"
-        f"Пришли новое значение сообщением. Отмена — кнопка ниже или /cancel."
+        f"{instr}\nОтмена — кнопка ниже или /cancel."
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Отмена", callback_data=f"m:{menu}")]])
     await callback.message.edit_text(prompt, reply_markup=kb)
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("clr:"))
+async def on_clear(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    _, key, menu = callback.data.split(":")
+    await settings.set(key, "")
+    text, kb = await render(menu)
+    await callback.message.edit_text("✅ <b>Список очищен.</b>\n\n" + text, reply_markup=kb)
+    await callback.answer("Очищено")
 
 
 async def _return_to_menu(bot: Bot, cid: int, mid: int, menu: str, prefix: str = "") -> None:
@@ -278,7 +333,13 @@ async def on_edit_finish(message: Message, state: FSMContext, bot: Bot) -> None:
         value = str(int(cleaned))
     elif kind == "list":
         items = [x.strip() for x in raw.replace("\n", ",").split(",") if x.strip()]
-        value = ",".join(items)
+        if data.get("mode") == "add":
+            existing = await settings.get_list(key)
+            seen = {w.lower() for w in existing}
+            merged = existing + [w for w in items if w.lower() not in seen]
+            value = ",".join(merged)
+        else:
+            value = ",".join(items)
     else:  # text — сохраняем как есть, с переносами строк
         value = raw
 
