@@ -9,7 +9,16 @@ from bot import settings_store as settings
 from bot.config import config
 from bot.filters.admin import IsBotAdmin
 from bot.utils.access import is_bot_admin
-from bot.utils.moderation import ban_user, kick_user, log_action, mute_user, unban_user, unmute_user
+from bot.utils.moderation import (
+    ban_user,
+    kick_user,
+    log_action,
+    mention,
+    mute_user,
+    safe_delete,
+    unban_user,
+    unmute_user,
+)
 
 router = Router(name="admin")
 # Все команды модерации доступны ТОЛЬКО доверенным админам из ADMIN_IDS
@@ -50,17 +59,33 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
     if not target:
         return
     user_id, label = target
+    ru = message.reply_to_message.from_user
     arg = _reason(message)
 
-    # /ban 1 и /ban 2 — пресеты с заготовленным текстом (редактируются в /panel)
-    if arg in ("1", "2"):
-        preset_text = await settings.get(f"ban_preset_{arg}")
+    # /ban 1 — тихий бан без текста (сообщение нарушителя и команда удаляются)
+    if arg == "1":
+        ok = await ban_user(bot, message.chat.id, user_id)
+        await db.reset_warns(message.chat.id, user_id)
+        if ok:
+            await safe_delete(bot, message.chat.id, message.reply_to_message.message_id)
+            await safe_delete(bot, message.chat.id, message.message_id)
+            await log_action(
+                bot, config.log_chat_id, f"🚫 {label} тихо забанен (/ban 1) админом {_actor(message)}"
+            )
+        else:
+            await message.reply("⚠️ Не удалось забанить (возможно, цель — админ чата).")
+        return
+
+    # /ban 2 — бан + публикация текста-пресета с упоминанием нарушителя
+    if arg == "2":
+        preset_text = (await settings.get("ban_preset_2")).replace("{user}", mention(ru))
         ok = await ban_user(bot, message.chat.id, user_id)
         await db.reset_warns(message.chat.id, user_id)
         if ok:
             await message.reply_to_message.reply(preset_text)
+            await safe_delete(bot, message.chat.id, message.message_id)
             await log_action(
-                bot, config.log_chat_id, f"🚫 {label} забанен (пресет {arg}) админом {_actor(message)}"
+                bot, config.log_chat_id, f"🚫 {label} забанен (/ban 2) админом {_actor(message)}"
             )
         else:
             await message.reply("⚠️ Не удалось забанить (возможно, цель — админ чата).")
@@ -192,7 +217,8 @@ async def cmd_help(message: Message) -> None:
     await message.reply(
         "Команды модерации (в ответ на сообщение пользователя):\n"
         "/ban [причина] — забанить\n"
-        "/ban 1 · /ban 2 — забанить с текстом-пресетом\n"
+        "/ban 1 — тихий бан без текста\n"
+        "/ban 2 — бан + текст с упоминанием (из панели)\n"
         "/unban <user_id> — разбанить\n"
         "/kick [причина] — кикнуть\n"
         "/mute <минуты> [причина] — замьютить\n"

@@ -6,6 +6,7 @@ from aiogram import BaseMiddleware, Bot
 from aiogram.enums import ChatType
 from aiogram.types import Message
 
+from bot import settings_store as settings
 from bot.config import config
 from bot.utils.access import is_bot_admin
 from bot.utils.moderation import log_action, mute_user, safe_delete
@@ -28,6 +29,8 @@ class AntiFloodMiddleware(BaseMiddleware):
         if event.from_user is None or event.from_user.is_bot:
             return await handler(event, data)
         if is_bot_admin(event.from_user.id):
+            return await handler(event, data)
+        if not await settings.get_bool("antiflood_enabled"):
             return await handler(event, data)
 
         key = (event.chat.id, event.from_user.id)

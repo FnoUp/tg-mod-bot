@@ -48,6 +48,14 @@ FULL_PERMISSIONS = ChatPermissions(
 )
 
 
+def mention(user) -> str:
+    """Возвращает кликабельное упоминание пользователя для HTML-разметки."""
+    if getattr(user, "username", None):
+        return f"@{user.username}"
+    name = (getattr(user, "full_name", None) or str(user.id)).replace("<", "").replace(">", "")
+    return f'<a href="tg://user?id={user.id}">{name}</a>'
+
+
 async def _safe(coro: Awaitable) -> bool:
     try:
         await coro

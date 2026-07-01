@@ -50,17 +50,18 @@ class AntiSpamMiddleware(BaseMiddleware):
         violation: str | None = None
         is_hard_ban = False
 
-        if contains_banned_word(text, config.ban_words):
+        if contains_banned_word(text, await settings.get_list("ban_words")):
             violation = "наркошоп/рассылка/спам (мгновенный бан)"
             is_hard_ban = True
-        elif config.cas_check_enabled and await _is_cas_banned(event.from_user.id):
+        elif await settings.get_bool("cas_check_enabled") and await _is_cas_banned(event.from_user.id):
             violation = "числится в CAS (Combot Anti-Spam) бан-листе"
             is_hard_ban = True
-        elif config.delete_links and contains_link(text):
+        elif await settings.get_bool("delete_links") and contains_link(text):
             links = extract_links(text)
-            if not all(is_whitelisted(link, config.whitelist_domains) for link in links):
+            whitelist = await settings.get_list("whitelist_domains")
+            if not all(is_whitelisted(link, whitelist) for link in links):
                 violation = "ссылка/реклама в сообщении"
-        elif contains_banned_word(text, config.banned_words):
+        elif contains_banned_word(text, await settings.get_list("banned_words")):
             violation = "запрещённое слово (похоже на рекламу)"
 
         if violation is None:
@@ -82,13 +83,14 @@ class AntiSpamMiddleware(BaseMiddleware):
                 )
             return None
 
+        warn_limit = await settings.get_int("warn_limit", config.warn_limit)
         count = await db.add_warn(event.chat.id, uid)
         await log_action(
             bot,
             config.log_chat_id,
-            f"⚠️ {label}: {violation} (предупреждение {count}/{config.warn_limit})",
+            f"⚠️ {label}: {violation} (предупреждение {count}/{warn_limit})",
         )
-        if count >= config.warn_limit:
+        if count >= warn_limit:
             if await ban_user(bot, event.chat.id, uid):
                 await db.reset_warns(event.chat.id, uid)
                 await log_action(

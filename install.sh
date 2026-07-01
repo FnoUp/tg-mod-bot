@@ -3,7 +3,7 @@
 # Автоустановщик Telegram-бота модерации.
 # Запуск одной строкой на чистом VPS (Ubuntu/Debian):
 #
-#   bash <(curl -fsSL https://raw.githubusercontent.com/ВАШ_ЛОГИН/tg-mod-bot/main/install.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/FnoUp/tg-mod-bot/main/install.sh)
 #
 # Скрипт сам: поставит git/docker, склонирует репозиторий, спросит токен и
 # admin ID прямо в терминале, создаст .env и запустит бота через docker compose.
@@ -11,7 +11,7 @@
 set -euo pipefail
 
 # --- Настройки (можно переопределить переменными окружения) ---
-REPO_URL="${REPO_URL:-https://github.com/ВАШ_ЛОГИН/tg-mod-bot.git}"
+REPO_URL="${REPO_URL:-https://github.com/FnoUp/tg-mod-bot.git}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/tg-mod-bot}"
 BRANCH="${BRANCH:-main}"
 
@@ -169,11 +169,6 @@ launch() {
 
 main() {
     require_root
-    if printf '%s' "$REPO_URL" | grep -q 'ВАШ_ЛОГИН'; then
-        err "REPO_URL не настроен. Замени ВАШ_ЛОГИН в скрипте на свой GitHub-логин"
-        err "или запусти:  REPO_URL=https://github.com/USER/tg-mod-bot.git bash install.sh"
-        exit 1
-    fi
     install_prereqs
     clone_or_update
     configure_env

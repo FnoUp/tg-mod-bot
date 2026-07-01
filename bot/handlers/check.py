@@ -8,7 +8,7 @@ from bot import settings_store as settings
 from bot.config import config
 from bot.filters.admin import IsBotAdmin
 from bot.utils.access import is_bot_admin
-from bot.utils.moderation import ban_user, log_action, mute_user, notify_admins, safe_delete
+from bot.utils.moderation import ban_user, log_action, mention, mute_user, notify_admins, safe_delete
 
 router = Router(name="check")
 
@@ -71,11 +71,17 @@ async def on_check_action(callback: CallbackQuery, bot: Bot) -> None:
     else:
         until = int(datetime.now(tz=timezone.utc).timestamp()) + RESTRICT_SECONDS
         ok = await mute_user(bot, chat_id, user_id, until_date=until)
-        result = (
-            f"🔒 Пользователю {user_id} выданы все ограничения."
-            if ok
-            else "⚠️ Не удалось ограничить (админ чата?)."
-        )
+        if ok:
+            # Публикуем в чате текст-предупреждение об ограничении с упоминанием
+            try:
+                member = await bot.get_chat_member(chat_id, user_id)
+                text = (await settings.get("restrict_message")).replace("{user}", mention(member.user))
+                await bot.send_message(chat_id, text)
+            except Exception:
+                pass
+            result = f"🔒 Пользователю {user_id} выданы все ограничения."
+        else:
+            result = "⚠️ Не удалось ограничить (админ чата?)."
 
     actor = f"@{callback.from_user.username}" if callback.from_user.username else str(callback.from_user.id)
     await callback.message.edit_text(

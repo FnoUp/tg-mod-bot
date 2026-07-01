@@ -59,6 +59,7 @@ class AntiDuplicateMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         bot: Bot = data["bot"]
+        limit = await settings.get_int("duplicate_limit", config.duplicate_limit)
         key = (event.chat.id, event.from_user.id)
         text_hash = hash(normalized)
         now = time.monotonic()
@@ -81,7 +82,7 @@ class AntiDuplicateMiddleware(BaseMiddleware):
             bucket.popitem(last=False)
 
         count = len(timestamps)
-        if count <= config.duplicate_limit:
+        if count <= limit:
             return await handler(event, data)
 
         # Превышен лимит — удаляем повторную копию
@@ -89,12 +90,12 @@ class AntiDuplicateMiddleware(BaseMiddleware):
         label = f"@{event.from_user.username}" if event.from_user.username else event.from_user.full_name
 
         # Уведомляем админов только в момент первого превышения, чтобы не спамить ЛС
-        if count == config.duplicate_limit + 1:
+        if count == limit + 1:
             if deleted:
                 await notify_admins(
                     bot,
                     f"🧹 {label} повторяет одно и то же сообщение "
-                    f"(лимит {config.duplicate_limit} за {config.duplicate_window_hours} ч превышен). "
+                    f"(лимит {limit} за {config.duplicate_window_hours} ч превышен). "
                     f"Дубликаты удаляются автоматически. Чат: «{event.chat.title}».",
                 )
             else:
