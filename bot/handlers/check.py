@@ -8,7 +8,7 @@ from bot import settings_store as settings
 from bot.config import config
 from bot.filters.admin import IsBotAdmin
 from bot.utils.access import is_bot_admin
-from bot.utils.moderation import ban_user, log_action, mention, mute_user, notify_admins, safe_delete
+from bot.utils.moderation import ban_user, mention, mute_user, notify_admins, punish_log, safe_delete
 
 router = Router(name="check")
 
@@ -90,4 +90,8 @@ async def on_check_action(callback: CallbackQuery, bot: Bot) -> None:
     )
     await callback.answer("Готово")
     if ok:
-        await log_action(bot, config.log_chat_id, result)
+        punish_action = "ban" if action == "chk_ban" else "mute"
+        await punish_log(
+            bot, config.log_chat_id, result,
+            action=punish_action, chat_id=chat_id, user_id=user_id, label=str(user_id),
+        )

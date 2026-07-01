@@ -8,7 +8,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from bot import database as db
 from bot.config import config
-from bot.handlers import admin, check, newmembers, panel
+from bot.handlers import admin, check, newmembers, panel, undo
 from bot.middlewares.antidup import AntiDuplicateMiddleware
 from bot.middlewares.antiflood import AntiFloodMiddleware
 from bot.middlewares.antispam import AntiSpamMiddleware
@@ -35,6 +35,7 @@ async def main() -> None:
     dp.message.outer_middleware(AntiDuplicateMiddleware())
 
     dp.include_router(panel.router)
+    dp.include_router(undo.router)
     dp.include_router(admin.router)
     dp.include_router(check.router)
     dp.include_router(newmembers.router)

@@ -14,7 +14,7 @@ from bot import database as db
 from bot import settings_store as settings
 from bot.config import config
 from bot.utils.access import is_bot_admin
-from bot.utils.moderation import kick_user, log_action, mute_user, safe_delete
+from bot.utils.moderation import kick_user, log_action, mention, mute_user, punish_log, safe_delete
 
 router = Router(name="newmembers")
 
@@ -50,13 +50,15 @@ async def on_new_members(message: Message, bot: Bot) -> None:
         # Анти-рейд: при массовом входе новичков сразу мьютим (без капчи) и алертим админов
         if antiraid_on and await _is_raid(message.chat.id):
             until = int(time.time()) + config.raid_lockdown_minutes * 60
-            await mute_user(bot, message.chat.id, user.id, until_date=until)
-            await log_action(
-                bot,
-                config.log_chat_id,
-                f"🛡 АНТИ-РЕЙД в «{message.chat.title}»: массовый вход. "
-                f"@{user.username or user.id} автоматически ограничен.",
-            )
+            label = f"@{user.username}" if user.username else user.full_name
+            if await mute_user(bot, message.chat.id, user.id, until_date=until):
+                await punish_log(
+                    bot,
+                    config.log_chat_id,
+                    f"🛡 АНТИ-РЕЙД в «{message.chat.title}»: массовый вход. "
+                    f"{label} автоматически ограничен.",
+                    action="mute", chat_id=message.chat.id, user_id=user.id, label=label,
+                )
             continue
 
         try:
@@ -99,6 +101,15 @@ async def on_captcha_ok(callback: CallbackQuery, bot: Bot) -> None:
     await log_action(
         bot, config.log_chat_id, f"✅ @{callback.from_user.username or expected_user_id} прошёл проверку"
     )
+
+    # Приветствие + правила (если включено в панели)
+    if await settings.get_bool("welcome_enabled"):
+        welcome = (await settings.get("welcome_text")).replace("{user}", mention(callback.from_user))
+        if welcome.strip():
+            try:
+                await bot.send_message(callback.message.chat.id, welcome)
+            except Exception:
+                pass
 
 
 async def check_expired_captchas(bot: Bot) -> None:

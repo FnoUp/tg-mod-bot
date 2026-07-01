@@ -5,6 +5,7 @@
 не нужно листать вверх. Все настройки применяются сразу, без рестарта.
 """
 import html
+import time
 from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot, F, Router
@@ -38,6 +39,8 @@ FIELDS: dict[str, tuple[str, str, str, str]] = {
                        "{time} — подставится дедлайн (сейчас +2ч по Перми)."),
     "restrict_message": ("Текст «Ограничить»", "text", "texts",
                          "Публикуется при нажатии «Ограничить доступ». {user} — упоминание."),
+    "welcome_text": ("Приветствие новичка", "text", "texts",
+                     "Отправляется после прохождения капчи. {user} — упоминание."),
     "ban_words": ("Слова мгновенного бана", "list", "words_ban",
                   "Через запятую. За любое слово — мгновенный бан."),
     "banned_words": ("Слова-предупреждения", "list", "words_warn",
@@ -56,6 +59,7 @@ TOGGLES: dict[str, tuple[str, str]] = {
     "antiflood_enabled": ("Антифлуд (частые сообщения)", "modules"),
     "antiraid_enabled": ("Антирейд (массовый вход)", "modules"),
     "antidup_enabled": ("Лимит повторов", "modules"),
+    "welcome_enabled": ("Приветствие новичков", "modules"),
     "delete_links": ("Удалять ссылки", "filters"),
     "cas_check_enabled": ("CAS-проверка спамеров", "filters"),
 }
@@ -92,6 +96,8 @@ async def render_main() -> tuple[str, InlineKeyboardMarkup]:
         [InlineKeyboardButton(text="⚠️ Слова: предупреждение", callback_data="m:words_warn")],
         [InlineKeyboardButton(text="🔗 Фильтры ссылок/спама", callback_data="m:filters")],
         [InlineKeyboardButton(text="🔢 Лимиты", callback_data="m:limits")],
+        [InlineKeyboardButton(text="♻️ Вернуть пользователя", callback_data="m:restore")],
+        [InlineKeyboardButton(text="📊 Статистика за неделю", callback_data="m:stats")],
         [InlineKeyboardButton(text="🕓 История действий", callback_data="m:history")],
     ])
     return text, kb
@@ -101,16 +107,19 @@ async def render_texts() -> tuple[str, InlineKeyboardMarkup]:
     ban2 = _esc(_short(await settings.get("ban_preset_2")))
     check = _esc(_short(await settings.get("check_template")))
     restrict = _esc(_short(await settings.get("restrict_message")))
+    welcome = _esc(_short(await settings.get("welcome_text")))
     text = (
         "📝 <b>Тексты</b>\n\n"
         f"<b>/ban 2:</b>\n{ban2}\n\n"
         f"<b>/check:</b>\n{check}\n\n"
-        f"<b>«Ограничить»:</b>\n{restrict}"
+        f"<b>«Ограничить»:</b>\n{restrict}\n\n"
+        f"<b>Приветствие:</b>\n{welcome}"
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✍️ Изменить /ban 2", callback_data="e:ban_preset_2:texts")],
         [InlineKeyboardButton(text="✍️ Изменить /check", callback_data="e:check_template:texts")],
         [InlineKeyboardButton(text="✍️ Изменить «Ограничить»", callback_data="e:restrict_message:texts")],
+        [InlineKeyboardButton(text="✍️ Изменить приветствие", callback_data="e:welcome_text:texts")],
         _back_row(),
     ])
     return text, kb
@@ -134,6 +143,8 @@ async def render_modules() -> tuple[str, InlineKeyboardMarkup]:
         "ограничивает новичков и присылает тебе тревогу.\n\n"
         "♻️ <b>Лимит повторов</b> — не даёт постить одно и то же сообщение больше "
         "заданного числа раз (борьба с рекламщиками).\n\n"
+        "👋 <b>Приветствие новичков</b> — после прохождения капчи присылает "
+        "новичку приветствие и правила (текст — в разделе «Тексты»).\n\n"
         "Нажми на модуль, чтобы включить или выключить его."
     )
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
@@ -221,6 +232,52 @@ async def render_history() -> tuple[str, InlineKeyboardMarkup]:
     return text, kb
 
 
+async def render_restore() -> tuple[str, InlineKeyboardMarkup]:
+    bans = await db.get_recent_actions("ban", 8)
+    mutes = await db.get_recent_actions("mute", 8)
+    rows: list[list[InlineKeyboardButton]] = []
+    text = "♻️ <b>Восстановление доступа</b>\n\n"
+    if bans:
+        text += "<b>Недавно забаненные</b> — нажми, чтобы разбанить и получить ссылку для возврата:\n"
+        for chat_id, user_id, label, _ts in bans:
+            rows.append([InlineKeyboardButton(
+                text=f"↩️ Разбан {label}", callback_data=f"undo:ban:{chat_id}:{user_id}")])
+    if mutes:
+        text += "\n<b>Недавно ограниченные</b> — нажми, чтобы снять мьют:\n"
+        for chat_id, user_id, label, _ts in mutes:
+            rows.append([InlineKeyboardButton(
+                text=f"🔊 Снять мьют {label}", callback_data=f"undo:mute:{chat_id}:{user_id}")])
+    if not bans and not mutes:
+        text += "Пока некого восстанавливать — бот никого не банил и не мьютил."
+    rows.append(_back_row())
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def render_stats() -> tuple[str, InlineKeyboardMarkup]:
+    now = int(time.time())
+    week, day = now - 7 * 86400, now - 86400
+    b7 = await db.count_actions_since("ban", week)
+    m7 = await db.count_actions_since("mute", week)
+    k7 = await db.count_actions_since("kick", week)
+    b1 = await db.count_actions_since("ban", day)
+    m1 = await db.count_actions_since("mute", day)
+    text = (
+        "📊 <b>Статистика</b>\n\n"
+        "<b>За неделю:</b>\n"
+        f"🚫 Банов: <b>{b7}</b>\n"
+        f"🔇 Мьютов: <b>{m7}</b>\n"
+        f"👢 Киков: <b>{k7}</b>\n\n"
+        "<b>За сутки:</b>\n"
+        f"🚫 Банов: <b>{b1}</b>\n"
+        f"🔇 Мьютов: <b>{m1}</b>"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Обновить", callback_data="m:stats")],
+        _back_row(),
+    ])
+    return text, kb
+
+
 MENUS = {
     "main": render_main,
     "texts": render_texts,
@@ -229,6 +286,8 @@ MENUS = {
     "words_warn": render_words_warn,
     "filters": render_filters,
     "limits": render_limits,
+    "restore": render_restore,
+    "stats": render_stats,
     "history": render_history,
 }
 

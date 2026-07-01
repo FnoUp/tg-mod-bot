@@ -27,17 +27,25 @@ RESTRICT_MESSAGE_DEFAULT = (
     "Вся информация в закреплённом сообщении сверху\U0001f446"
 )
 
+WELCOME_TEXT_DEFAULT = (
+    "\U0001f44b {user}, добро пожаловать!\n\n"
+    "Пожалуйста, ознакомьтесь с правилами в закреплённом сообщении.\n"
+    "Реклама, спам и оскорбления запрещены — за нарушение бан."
+)
+
 # Значения по умолчанию. Списки хранятся строкой через запятую.
 DEFAULTS: dict[str, str] = {
     # Тексты
     "check_template": CHECK_TEMPLATE_DEFAULT,
     "ban_preset_2": BAN_PRESET_2_DEFAULT,
     "restrict_message": RESTRICT_MESSAGE_DEFAULT,
+    "welcome_text": WELCOME_TEXT_DEFAULT,
     # Модули (вкл/выкл)
     "antispam_enabled": "true",
     "antiflood_enabled": "true",
     "antiraid_enabled": "true",
     "antidup_enabled": "true",
+    "welcome_enabled": "true",
     # Фильтры
     "delete_links": "true" if config.delete_links else "false",
     "cas_check_enabled": "true" if config.cas_check_enabled else "false",

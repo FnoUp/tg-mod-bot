@@ -9,7 +9,7 @@ from bot import database as db
 from bot import settings_store as settings
 from bot.config import config
 from bot.utils.access import is_bot_admin
-from bot.utils.moderation import ban_user, log_action, notify_admins, safe_delete
+from bot.utils.moderation import ban_user, log_action, notify_admins, punish_log, safe_delete
 from bot.utils.text import contains_banned_word, contains_link, extract_links, is_whitelisted
 
 
@@ -74,7 +74,10 @@ class AntiSpamMiddleware(BaseMiddleware):
 
         if is_hard_ban:
             if await ban_user(bot, event.chat.id, uid):
-                await log_action(bot, config.log_chat_id, f"🚫 Забанен {label}: {violation}")
+                await punish_log(
+                    bot, config.log_chat_id, f"🚫 Забанен {label}: {violation}",
+                    action="ban", chat_id=event.chat.id, user_id=uid, label=label,
+                )
             else:
                 await notify_admins(
                     bot,
@@ -93,8 +96,9 @@ class AntiSpamMiddleware(BaseMiddleware):
         if count >= warn_limit:
             if await ban_user(bot, event.chat.id, uid):
                 await db.reset_warns(event.chat.id, uid)
-                await log_action(
-                    bot, config.log_chat_id, f"🚫 {label} забанен: превышен лимит предупреждений"
+                await punish_log(
+                    bot, config.log_chat_id, f"🚫 {label} забанен: превышен лимит предупреждений",
+                    action="ban", chat_id=event.chat.id, user_id=uid, label=label,
                 )
             else:
                 await notify_admins(

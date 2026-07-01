@@ -11,7 +11,7 @@ import logging
 from typing import Awaitable
 
 from aiogram import Bot
-from aiogram.types import ChatPermissions, InlineKeyboardMarkup
+from aiogram.types import ChatPermissions, InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot import database as db
 from bot.config import config
@@ -126,5 +126,46 @@ async def log_action(bot: Bot, log_chat_id: int | None, text: str) -> None:
     except Exception:
         pass
     await notify_admins(bot, text)
+    if log_chat_id:
+        await _safe(bot.send_message(log_chat_id, text))
+
+
+async def create_invite(bot: Bot, chat_id: int) -> str | None:
+    """Одноразовая ссылка-приглашение для возврата пользователя (бот не может
+    добавить его в чат сам — Telegram это запрещает)."""
+    try:
+        link = await bot.create_chat_invite_link(chat_id, member_limit=1, name="Возврат")
+        return link.invite_link
+    except Exception:
+        return None
+
+
+async def punish_log(
+    bot: Bot,
+    log_chat_id: int | None,
+    text: str,
+    *,
+    action: str,
+    chat_id: int,
+    user_id: int,
+    label: str,
+) -> None:
+    """Как log_action, но пишет структурированное действие (для статистики и
+    восстановления) и прикладывает к ЛС-уведомлению кнопку «Отменить»."""
+    try:
+        await db.add_log(text)
+    except Exception:
+        pass
+    try:
+        await db.add_action(chat_id, user_id, action, label)
+    except Exception:
+        pass
+    markup = None
+    if action in ("ban", "mute"):
+        undo_label = "↩️ Разбанить и вернуть" if action == "ban" else "↩️ Снять ограничения"
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=undo_label, callback_data=f"undo:{action}:{chat_id}:{user_id}")
+        ]])
+    await notify_admins(bot, text, reply_markup=markup)
     if log_chat_id:
         await _safe(bot.send_message(log_chat_id, text))

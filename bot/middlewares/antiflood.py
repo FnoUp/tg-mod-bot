@@ -9,7 +9,7 @@ from aiogram.types import Message
 from bot import settings_store as settings
 from bot.config import config
 from bot.utils.access import is_bot_admin
-from bot.utils.moderation import log_action, mute_user, safe_delete
+from bot.utils.moderation import mute_user, punish_log, safe_delete
 
 
 class AntiFloodMiddleware(BaseMiddleware):
@@ -51,10 +51,11 @@ class AntiFloodMiddleware(BaseMiddleware):
         await safe_delete(bot, event.chat.id, event.message_id)
         if muted:
             label = f"@{event.from_user.username}" if event.from_user.username else event.from_user.full_name
-            await log_action(
+            await punish_log(
                 bot,
                 config.log_chat_id,
                 f"🔇 Флуд: {label} замьючен на {config.flood_mute_minutes} мин. "
                 f"в чате «{event.chat.title}»",
+                action="mute", chat_id=event.chat.id, user_id=event.from_user.id, label=label,
             )
         return None

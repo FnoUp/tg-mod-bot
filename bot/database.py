@@ -27,7 +27,49 @@ async def init_db(path: str) -> None:
         "CREATE TABLE IF NOT EXISTS action_log ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, text TEXT NOT NULL)"
     )
+    await _db.execute(
+        "CREATE TABLE IF NOT EXISTS actions ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, chat_id INTEGER NOT NULL, "
+        "user_id INTEGER NOT NULL, action TEXT NOT NULL, label TEXT NOT NULL)"
+    )
     await _db.commit()
+
+
+async def add_action(chat_id: int, user_id: int, action: str, label: str) -> None:
+    await _db.execute(
+        "INSERT INTO actions (ts, chat_id, user_id, action, label) VALUES (?, ?, ?, ?, ?)",
+        (int(time.time()), chat_id, user_id, action, label),
+    )
+    await _db.execute(
+        "DELETE FROM actions WHERE id NOT IN (SELECT id FROM actions ORDER BY id DESC LIMIT 1000)"
+    )
+    await _db.commit()
+
+
+async def get_recent_actions(action: str, limit: int = 8) -> list[tuple[int, int, str, int]]:
+    """Последние уникальные пользователи по типу действия: (chat_id, user_id, label, ts)."""
+    async with _db.execute(
+        "SELECT chat_id, user_id, label, MAX(ts) AS m FROM actions WHERE action = ? "
+        "GROUP BY chat_id, user_id ORDER BY m DESC LIMIT ?",
+        (action, limit),
+    ) as cur:
+        return list(await cur.fetchall())
+
+
+async def delete_action(chat_id: int, user_id: int, action: str) -> None:
+    await _db.execute(
+        "DELETE FROM actions WHERE chat_id = ? AND user_id = ? AND action = ?",
+        (chat_id, user_id, action),
+    )
+    await _db.commit()
+
+
+async def count_actions_since(action: str, since_ts: int) -> int:
+    async with _db.execute(
+        "SELECT COUNT(*) FROM actions WHERE action = ? AND ts >= ?", (action, since_ts)
+    ) as cur:
+        row = await cur.fetchone()
+    return row[0] if row else 0
 
 
 async def add_log(text: str) -> None:

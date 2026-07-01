@@ -15,6 +15,7 @@ from bot.utils.moderation import (
     log_action,
     mention,
     mute_user,
+    punish_log,
     safe_delete,
     unban_user,
     unmute_user,
@@ -69,8 +70,9 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
         if ok:
             await safe_delete(bot, message.chat.id, message.reply_to_message.message_id)
             await safe_delete(bot, message.chat.id, message.message_id)
-            await log_action(
-                bot, config.log_chat_id, f"🚫 {label} тихо забанен (/ban 1) админом {_actor(message)}"
+            await punish_log(
+                bot, config.log_chat_id, f"🚫 {label} тихо забанен (/ban 1) админом {_actor(message)}",
+                action="ban", chat_id=message.chat.id, user_id=user_id, label=label,
             )
         else:
             await message.reply("⚠️ Не удалось забанить (возможно, цель — админ чата).")
@@ -84,8 +86,9 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
         if ok:
             await message.reply_to_message.reply(preset_text)
             await safe_delete(bot, message.chat.id, message.message_id)
-            await log_action(
-                bot, config.log_chat_id, f"🚫 {label} забанен (/ban 2) админом {_actor(message)}"
+            await punish_log(
+                bot, config.log_chat_id, f"🚫 {label} забанен (/ban 2) админом {_actor(message)}",
+                action="ban", chat_id=message.chat.id, user_id=user_id, label=label,
             )
         else:
             await message.reply("⚠️ Не удалось забанить (возможно, цель — админ чата).")
@@ -95,8 +98,9 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
     await db.reset_warns(message.chat.id, user_id)
     if ok:
         await message.reply(f"🚫 {label} забанен. Причина: {arg}")
-        await log_action(
-            bot, config.log_chat_id, f"🚫 {label} забанен админом {_actor(message)}. Причина: {arg}"
+        await punish_log(
+            bot, config.log_chat_id, f"🚫 {label} забанен админом {_actor(message)}. Причина: {arg}",
+            action="ban", chat_id=message.chat.id, user_id=user_id, label=label,
         )
     else:
         await message.reply("⚠️ Не удалось забанить (возможно, цель — админ чата).")
@@ -126,7 +130,10 @@ async def cmd_kick(message: Message, bot: Bot) -> None:
     user_id, label = target
     if await kick_user(bot, message.chat.id, user_id):
         await message.reply(f"👢 {label} исключён из чата.")
-        await log_action(bot, config.log_chat_id, f"👢 {label} кикнут админом {_actor(message)}")
+        await punish_log(
+            bot, config.log_chat_id, f"👢 {label} кикнут админом {_actor(message)}",
+            action="kick", chat_id=message.chat.id, user_id=user_id, label=label,
+        )
     else:
         await message.reply("⚠️ Не удалось кикнуть (возможно, цель — админ чата).")
 
@@ -143,8 +150,9 @@ async def cmd_mute(message: Message, bot: Bot) -> None:
     until = int(time.time()) + minutes * 60
     if await mute_user(bot, message.chat.id, user_id, until_date=until):
         await message.reply(f"🔇 {label} замьючен на {minutes} мин. Причина: {reason}")
-        await log_action(
-            bot, config.log_chat_id, f"🔇 {label} замьючен на {minutes} мин. админом {_actor(message)}"
+        await punish_log(
+            bot, config.log_chat_id, f"🔇 {label} замьючен на {minutes} мин. админом {_actor(message)}",
+            action="mute", chat_id=message.chat.id, user_id=user_id, label=label,
         )
     else:
         await message.reply("⚠️ Не удалось замьютить (возможно, цель — админ чата).")
@@ -176,7 +184,10 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
         if await ban_user(bot, message.chat.id, user_id):
             await db.reset_warns(message.chat.id, user_id)
             await message.reply(f"🚫 {label} забанен: превышен лимит предупреждений.")
-            await log_action(bot, config.log_chat_id, f"🚫 {label} забанен: лимит предупреждений")
+            await punish_log(
+                bot, config.log_chat_id, f"🚫 {label} забанен: лимит предупреждений",
+                action="ban", chat_id=message.chat.id, user_id=user_id, label=label,
+            )
         else:
             await message.reply("⚠️ Лимит предупреждений превышен, но забанить не удалось (админ чата?).")
 
