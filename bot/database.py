@@ -91,6 +91,19 @@ async def get_recent_logs(limit: int = 15) -> list[tuple[int, str]]:
         return list(await cur.fetchall())
 
 
+async def count_logs() -> int:
+    async with _db.execute("SELECT COUNT(*) FROM action_log") as cur:
+        row = await cur.fetchone()
+    return row[0] if row else 0
+
+
+async def get_logs_page(limit: int, offset: int) -> list[tuple[int, str]]:
+    async with _db.execute(
+        "SELECT ts, text FROM action_log ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)
+    ) as cur:
+        return list(await cur.fetchall())
+
+
 async def get_setting(key: str) -> str | None:
     async with _db.execute("SELECT value FROM settings WHERE key = ?", (key,)) as cur:
         row = await cur.fetchone()

@@ -214,8 +214,15 @@ async def render_limits() -> tuple[str, InlineKeyboardMarkup]:
     return text, kb
 
 
-async def render_history() -> tuple[str, InlineKeyboardMarkup]:
-    entries = await db.get_recent_logs(15)
+HISTORY_PER_PAGE = 15
+
+
+async def render_history(page: int = 0) -> tuple[str, InlineKeyboardMarkup]:
+    total = await db.count_logs()
+    pages = max(1, (total + HISTORY_PER_PAGE - 1) // HISTORY_PER_PAGE)
+    page = max(0, min(page, pages - 1))
+    entries = await db.get_logs_page(HISTORY_PER_PAGE, page * HISTORY_PER_PAGE)
+
     if not entries:
         body = "Пока пусто — бот ещё не совершал действий."
     else:
@@ -224,12 +231,20 @@ async def render_history() -> tuple[str, InlineKeyboardMarkup]:
             when = datetime.fromtimestamp(ts, PERM_TZ).strftime("%d.%m %H:%M")
             lines.append(f"<b>{when}</b>  {_esc(entry)}")
         body = "\n".join(lines)
-    text = "🕓 <b>История действий</b>\nПоследние 15 событий (время — Пермь):\n\n" + body
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Обновить", callback_data="m:history")],
-        _back_row(),
-    ])
-    return text, kb
+
+    text = (
+        f"🕓 <b>История действий</b> (стр. {page + 1}/{pages}, всего {total}, время — Пермь)\n\n"
+        + body
+    )
+    nav: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="⬅️ Пред.", callback_data=f"hp:{page - 1}"))
+    if page < pages - 1:
+        nav.append(InlineKeyboardButton(text="След. ➡️", callback_data=f"hp:{page + 1}"))
+    rows = [nav] if nav else []
+    rows.append([InlineKeyboardButton(text="🔄 Обновить", callback_data=f"hp:{page}")])
+    rows.append(_back_row())
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def render_restore() -> tuple[str, InlineKeyboardMarkup]:
@@ -305,12 +320,29 @@ async def cmd_panel(message: Message, state: FSMContext) -> None:
     await message.answer(text, reply_markup=kb)
 
 
+async def _safe_edit(callback: CallbackQuery, text: str, kb: InlineKeyboardMarkup) -> None:
+    # Игнорируем "message is not modified" при обновлении того же экрана
+    try:
+        await callback.message.edit_text(text, reply_markup=kb)
+    except Exception:
+        pass
+
+
 @router.callback_query(F.data.startswith("m:"))
 async def on_nav(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()  # любой переход по меню отменяет режим редактирования
     menu = callback.data.split(":", 1)[1]
     text, kb = await render(menu)
-    await callback.message.edit_text(text, reply_markup=kb)
+    await _safe_edit(callback, text, kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("hp:"))
+async def on_history_page(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    page = int(callback.data.split(":", 1)[1])
+    text, kb = await render_history(page)
+    await _safe_edit(callback, text, kb)
     await callback.answer()
 
 
