@@ -48,6 +48,7 @@ DEFAULTS: dict[str, str] = {
     # Числовые лимиты
     "warn_limit": str(config.warn_limit),
     "duplicate_limit": str(config.duplicate_limit),
+    "check_offset_hours": "1",
 }
 
 _cache: dict[str, str] = {}

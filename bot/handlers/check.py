@@ -28,7 +28,8 @@ async def cmd_check(message: Message, bot: Bot) -> None:
         await message.reply("⛔ Это админ бота — проверка не требуется.")
         return
 
-    deadline = (datetime.now(PERM_TZ) + timedelta(hours=2)).strftime("%H:%M")
+    offset_hours = await settings.get_int("check_offset_hours", 1)
+    deadline = (datetime.now(PERM_TZ) + timedelta(hours=offset_hours)).strftime("%H:%M")
     template = await settings.get("check_template")
     text = template.replace("{time}", deadline)
 

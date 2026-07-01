@@ -42,6 +42,8 @@ FIELDS: dict[str, tuple[str, str, str, str]] = {
                           "Через запятую. Ссылки на эти домены не удаляются."),
     "warn_limit": ("Предупреждений до бана", "int", "limits", "Целое число ≥ 1."),
     "duplicate_limit": ("Лимит одинаковых сообщений", "int", "limits", "Целое число ≥ 1."),
+    "check_offset_hours": ("Дедлайн /check, часов", "int", "limits",
+                           "Через сколько часов ставить время в тексте /check. Целое ≥ 1."),
 }
 
 # Тумблеры: key -> (заголовок, раздел)
@@ -167,14 +169,17 @@ async def render_filters() -> tuple[str, InlineKeyboardMarkup]:
 async def render_limits() -> tuple[str, InlineKeyboardMarkup]:
     warn = await settings.get_int("warn_limit", config.warn_limit)
     dup = await settings.get_int("duplicate_limit", config.duplicate_limit)
+    check_h = await settings.get_int("check_offset_hours", 1)
     text = (
         "🔢 <b>Лимиты</b>\n\n"
         f"⚠️ Предупреждений до бана: <b>{warn}</b>\n"
-        f"♻️ Одинаковых сообщений подряд: <b>{dup}</b>"
+        f"♻️ Одинаковых сообщений подряд: <b>{dup}</b>\n"
+        f"⏱ Дедлайн /check: <b>+{check_h} ч</b>"
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"⚠️ Предупреждений до бана: {warn}", callback_data="e:warn_limit:limits")],
         [InlineKeyboardButton(text=f"♻️ Лимит повторов: {dup}", callback_data="e:duplicate_limit:limits")],
+        [InlineKeyboardButton(text=f"⏱ Дедлайн /check: +{check_h} ч", callback_data="e:check_offset_hours:limits")],
         _back_row(),
     ])
     return text, kb
