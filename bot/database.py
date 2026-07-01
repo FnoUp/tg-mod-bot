@@ -1,0 +1,102 @@
+import time
+from pathlib import Path
+
+import aiosqlite
+
+_db: aiosqlite.Connection | None = None
+
+
+async def init_db(path: str) -> None:
+    global _db
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    _db = await aiosqlite.connect(path)
+    await _db.execute(
+        "CREATE TABLE IF NOT EXISTS warns ("
+        "chat_id INTEGER NOT NULL, user_id INTEGER NOT NULL, count INTEGER NOT NULL DEFAULT 0, "
+        "PRIMARY KEY (chat_id, user_id))"
+    )
+    await _db.execute(
+        "CREATE TABLE IF NOT EXISTS captcha_pending ("
+        "chat_id INTEGER NOT NULL, user_id INTEGER NOT NULL, message_id INTEGER NOT NULL, "
+        "join_ts INTEGER NOT NULL, PRIMARY KEY (chat_id, user_id))"
+    )
+    await _db.execute(
+        "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+    )
+    await _db.commit()
+
+
+async def get_setting(key: str) -> str | None:
+    async with _db.execute("SELECT value FROM settings WHERE key = ?", (key,)) as cur:
+        row = await cur.fetchone()
+    return row[0] if row else None
+
+
+async def set_setting(key: str, value: str) -> None:
+    await _db.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+    await _db.commit()
+
+
+async def close_db() -> None:
+    if _db is not None:
+        await _db.close()
+
+
+async def get_warns(chat_id: int, user_id: int) -> int:
+    async with _db.execute(
+        "SELECT count FROM warns WHERE chat_id = ? AND user_id = ?", (chat_id, user_id)
+    ) as cur:
+        row = await cur.fetchone()
+    return row[0] if row else 0
+
+
+async def add_warn(chat_id: int, user_id: int) -> int:
+    count = await get_warns(chat_id, user_id) + 1
+    await _db.execute(
+        "INSERT INTO warns (chat_id, user_id, count) VALUES (?, ?, ?) "
+        "ON CONFLICT (chat_id, user_id) DO UPDATE SET count = excluded.count",
+        (chat_id, user_id, count),
+    )
+    await _db.commit()
+    return count
+
+
+async def reset_warns(chat_id: int, user_id: int) -> None:
+    await _db.execute("DELETE FROM warns WHERE chat_id = ? AND user_id = ?", (chat_id, user_id))
+    await _db.commit()
+
+
+async def add_captcha(chat_id: int, user_id: int, message_id: int) -> None:
+    await _db.execute(
+        "INSERT OR REPLACE INTO captcha_pending (chat_id, user_id, message_id, join_ts) "
+        "VALUES (?, ?, ?, ?)",
+        (chat_id, user_id, message_id, int(time.time())),
+    )
+    await _db.commit()
+
+
+async def pop_captcha(chat_id: int, user_id: int) -> tuple[int, int] | None:
+    async with _db.execute(
+        "SELECT message_id, join_ts FROM captcha_pending WHERE chat_id = ? AND user_id = ?",
+        (chat_id, user_id),
+    ) as cur:
+        row = await cur.fetchone()
+    if row is None:
+        return None
+    await _db.execute(
+        "DELETE FROM captcha_pending WHERE chat_id = ? AND user_id = ?", (chat_id, user_id)
+    )
+    await _db.commit()
+    return row
+
+
+async def get_expired_captchas(cutoff_ts: int) -> list[tuple[int, int, int]]:
+    async with _db.execute(
+        "SELECT chat_id, user_id, message_id FROM captcha_pending WHERE join_ts < ?",
+        (cutoff_ts,),
+    ) as cur:
+        return list(await cur.fetchall())

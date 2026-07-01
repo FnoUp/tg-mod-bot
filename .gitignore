@@ -1,0 +1,14 @@
+# Секреты — НИКОГДА не коммитить
+.env
+.env.bak.*
+
+# База данных и данные бота
+data/
+*.sqlite3
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.venv_check/

@@ -1,0 +1,9 @@
+services:
+  mod-bot:
+    build: .
+    container_name: tg-mod-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data

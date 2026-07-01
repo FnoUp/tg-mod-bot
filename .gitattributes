@@ -1,0 +1,5 @@
+# Всё хранить и выгружать с LF — иначе bash-скрипты ломаются на Linux-VPS
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+Dockerfile text eol=lf
