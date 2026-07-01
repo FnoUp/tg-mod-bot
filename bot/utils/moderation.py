@@ -123,16 +123,24 @@ def _menu_button() -> InlineKeyboardButton:
     return InlineKeyboardButton(text="☰ Открыть панель", callback_data="openmenu")
 
 
-async def log_action(bot: Bot, log_chat_id: int | None, text: str) -> None:
-    """Пишет событие в историю (БД), в ЛС всем админам и в лог-чат (если задан)."""
+async def log_action(
+    bot: Bot, log_chat_id: int | None, text: str, detail: str | None = None
+) -> None:
+    """Пишет событие в историю (БД) и в ЛС/лог-чат.
+
+    text   — краткая строка, попадает и в историю, и в ЛС.
+    detail — доп. содержимое (напр. текст нарушившего сообщения): показывается
+             ТОЛЬКО в ЛС/лог-чате, в компактную историю не пишется.
+    """
     try:
         await db.add_log(text)
     except Exception:
         pass
+    dm_text = f"{text}\n💬 {detail}" if detail else text
     markup = InlineKeyboardMarkup(inline_keyboard=[[_menu_button()]])
-    await notify_admins(bot, text, reply_markup=markup)
+    await notify_admins(bot, dm_text, reply_markup=markup)
     if log_chat_id:
-        await _safe(bot.send_message(log_chat_id, text))
+        await _safe(bot.send_message(log_chat_id, dm_text))
 
 
 async def create_invite(bot: Bot, chat_id: int) -> str | None:
@@ -154,9 +162,13 @@ async def punish_log(
     chat_id: int,
     user_id: int,
     label: str,
+    detail: str | None = None,
 ) -> None:
     """Как log_action, но пишет структурированное действие (для статистики и
-    восстановления) и прикладывает к ЛС-уведомлению кнопку «Отменить»."""
+    восстановления) и прикладывает к ЛС-уведомлению кнопку «Отменить».
+
+    detail показывается только в ЛС/лог-чате, в историю не пишется.
+    """
     try:
         await db.add_log(text)
     except Exception:
@@ -165,12 +177,13 @@ async def punish_log(
         await db.add_action(chat_id, user_id, action, label)
     except Exception:
         pass
+    dm_text = f"{text}\n💬 {detail}" if detail else text
     rows = []
     if action in ("ban", "mute"):
         undo_label = "↩️ Разбанить и вернуть" if action == "ban" else "↩️ Снять ограничения"
         rows.append([InlineKeyboardButton(
             text=undo_label, callback_data=f"undo:{action}:{chat_id}:{user_id}")])
     rows.append([_menu_button()])
-    await notify_admins(bot, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await notify_admins(bot, dm_text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
     if log_chat_id:
-        await _safe(bot.send_message(log_chat_id, text))
+        await _safe(bot.send_message(log_chat_id, dm_text))
