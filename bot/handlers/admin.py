@@ -7,7 +7,7 @@ from aiogram.types import Message
 from bot import database as db
 from bot import settings_store as settings
 from bot.config import config
-from bot.filters.admin import IsBotAdmin
+from bot.filters.admin import IsChatOwner
 from bot.utils.access import is_bot_admin
 from bot.utils.moderation import (
     ban_user,
@@ -22,8 +22,8 @@ from bot.utils.moderation import (
 )
 
 router = Router(name="admin")
-# Все команды модерации доступны ТОЛЬКО доверенным админам из ADMIN_IDS
-router.message.filter(IsBotAdmin())
+# Команды в чате: только владелец чата, ADMIN_IDS или отправка «от сообщества»
+router.message.filter(IsChatOwner())
 
 
 def _target(message: Message) -> tuple[int, str] | None:
@@ -39,11 +39,23 @@ def _reason(message: Message, command_len: int = 1) -> str:
 
 
 def _actor(message: Message) -> str:
-    return f"@{message.from_user.username}" if message.from_user.username else str(message.from_user.id)
+    user = message.from_user
+    if user and user.username:
+        return f"@{user.username}"
+    if user and not user.is_bot:
+        return str(user.id)
+    if message.sender_chat:
+        return "сообщество"
+    return "админ"
+
+
+async def _cleanup(bot: Bot, message: Message) -> None:
+    """Удаляет само командное сообщение, чтобы не засорять чат (best-effort;
+    сообщение владельца/создателя Telegram удалить не даст — тогда останется)."""
+    await safe_delete(bot, message.chat.id, message.message_id)
 
 
 async def _guarded_target(message: Message) -> tuple[int, str] | None:
-    """Возвращает цель или None, отвечая пользователю о причине отказа."""
     target = _target(message)
     if not target:
         await message.reply("Ответь этой командой на сообщение пользователя.")
@@ -63,47 +75,48 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
     ru = message.reply_to_message.from_user
     arg = _reason(message)
 
-    # /ban 1 — тихий бан без текста (сообщение нарушителя и команда удаляются)
+    # /ban 1 — тихий бан без текста
     if arg == "1":
         ok = await ban_user(bot, message.chat.id, user_id)
         await db.reset_warns(message.chat.id, user_id)
         if ok:
             await safe_delete(bot, message.chat.id, message.reply_to_message.message_id)
-            await safe_delete(bot, message.chat.id, message.message_id)
             await punish_log(
                 bot, config.log_chat_id, f"🚫 Бан {label} · тихий (/ban 1) · {_actor(message)}",
                 action="ban", chat_id=message.chat.id, user_id=user_id, label=label,
             )
         else:
             await message.reply("⚠️ Не удалось забанить (возможно, цель — админ чата).")
+        await _cleanup(bot, message)
         return
 
-    # /ban 2 — бан + публикация текста-пресета с упоминанием нарушителя
+    # /ban 2 — бан + публикация текста-пресета с упоминанием
     if arg == "2":
         preset_text = (await settings.get("ban_preset_2")).replace("{user}", mention(ru))
         ok = await ban_user(bot, message.chat.id, user_id)
         await db.reset_warns(message.chat.id, user_id)
         if ok:
             await message.reply_to_message.reply(preset_text)
-            await safe_delete(bot, message.chat.id, message.message_id)
             await punish_log(
                 bot, config.log_chat_id, f"🚫 Бан {label} · пресет 2 · {_actor(message)}",
                 action="ban", chat_id=message.chat.id, user_id=user_id, label=label,
             )
         else:
             await message.reply("⚠️ Не удалось забанить (возможно, цель — админ чата).")
+        await _cleanup(bot, message)
         return
 
+    # Обычный /ban [причина] — тихо, уведомление только в ЛС
     ok = await ban_user(bot, message.chat.id, user_id)
     await db.reset_warns(message.chat.id, user_id)
     if ok:
-        await message.reply(f"🚫 {label} забанен. Причина: {arg}")
         await punish_log(
             bot, config.log_chat_id, f"🚫 Бан {label} · {arg} · {_actor(message)}",
             action="ban", chat_id=message.chat.id, user_id=user_id, label=label,
         )
     else:
         await message.reply("⚠️ Не удалось забанить (возможно, цель — админ чата).")
+    await _cleanup(bot, message)
 
 
 @router.message(Command("unban"))
@@ -114,12 +127,10 @@ async def cmd_unban(message: Message, bot: Bot) -> None:
         return
     user_id = int(parts[1])
     if await unban_user(bot, message.chat.id, user_id):
-        await message.reply(f"✅ Пользователь {user_id} разбанен.")
-        await log_action(
-            bot, config.log_chat_id, f"↩️ Разбан id {user_id} · {_actor(message)}"
-        )
+        await log_action(bot, config.log_chat_id, f"↩️ Разбан id {user_id} · {_actor(message)}")
     else:
         await message.reply("⚠️ Не удалось разбанить.")
+    await _cleanup(bot, message)
 
 
 @router.message(Command("kick"))
@@ -128,14 +139,15 @@ async def cmd_kick(message: Message, bot: Bot) -> None:
     if not target:
         return
     user_id, label = target
+    # /kick — тихий: в беседе ничего не пишем
     if await kick_user(bot, message.chat.id, user_id):
-        await message.reply(f"👢 {label} исключён из чата.")
         await punish_log(
             bot, config.log_chat_id, f"👢 Кик {label} · {_actor(message)}",
             action="kick", chat_id=message.chat.id, user_id=user_id, label=label,
         )
     else:
         await message.reply("⚠️ Не удалось кикнуть (возможно, цель — админ чата).")
+    await _cleanup(bot, message)
 
 
 @router.message(Command("mute"))
@@ -146,29 +158,29 @@ async def cmd_mute(message: Message, bot: Bot) -> None:
     user_id, label = target
     parts = (message.text or "").split(maxsplit=2)
     minutes = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else config.flood_mute_minutes
-    reason = parts[2] if len(parts) > 2 else "не указана"
     until = int(time.time()) + minutes * 60
     if await mute_user(bot, message.chat.id, user_id, until_date=until):
-        await message.reply(f"🔇 {label} замьючен на {minutes} мин. Причина: {reason}")
         await punish_log(
             bot, config.log_chat_id, f"🔇 Мьют {label} · {minutes} мин · {_actor(message)}",
             action="mute", chat_id=message.chat.id, user_id=user_id, label=label,
         )
     else:
         await message.reply("⚠️ Не удалось замьютить (возможно, цель — админ чата).")
+    await _cleanup(bot, message)
 
 
 @router.message(Command("unmute"))
 async def cmd_unmute(message: Message, bot: Bot) -> None:
     target = _target(message)
     if not target:
-        await message.reply("Ответь этой командой на сообщение пользователя, которого нужно размьютить.")
+        await message.reply("Ответь этой командой на сообщение пользователя.")
         return
     user_id, label = target
     if await unmute_user(bot, message.chat.id, user_id):
-        await message.reply(f"🔊 {label} размьючен.")
+        await log_action(bot, config.log_chat_id, f"🔊 Снятие мьюта {label} · {_actor(message)}")
     else:
         await message.reply("⚠️ Не удалось размьютить.")
+    await _cleanup(bot, message)
 
 
 @router.message(Command("warn"))
@@ -178,65 +190,76 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
         return
     user_id, label = target
     reason = _reason(message)
+    warn_limit = await settings.get_int("warn_limit", config.warn_limit)
     count = await db.add_warn(message.chat.id, user_id)
-    await message.reply(f"⚠️ {label} получил предупреждение ({count}/{config.warn_limit}). Причина: {reason}")
-    if count >= config.warn_limit:
+    if count >= warn_limit:
         if await ban_user(bot, message.chat.id, user_id):
             await db.reset_warns(message.chat.id, user_id)
-            await message.reply(f"🚫 {label} забанен: превышен лимит предупреждений.")
             await punish_log(
                 bot, config.log_chat_id, f"🚫 Бан {label} · лимит предупреждений · {_actor(message)}",
                 action="ban", chat_id=message.chat.id, user_id=user_id, label=label,
             )
         else:
-            await message.reply("⚠️ Лимит предупреждений превышен, но забанить не удалось (админ чата?).")
+            await message.reply("⚠️ Лимит предупреждений превышен, но забанить не удалось.")
+    else:
+        await log_action(
+            bot, config.log_chat_id,
+            f"⚠️ Предупреждение {label} · {reason} ({count}/{warn_limit}) · {_actor(message)}",
+        )
+    await _cleanup(bot, message)
 
 
 @router.message(Command("unwarn"))
-async def cmd_unwarn(message: Message) -> None:
+async def cmd_unwarn(message: Message, bot: Bot) -> None:
     target = _target(message)
     if not target:
         await message.reply("Ответь этой командой на сообщение пользователя.")
         return
     user_id, label = target
     await db.reset_warns(message.chat.id, user_id)
-    await message.reply(f"✅ Предупреждения {label} сброшены.")
+    await log_action(bot, config.log_chat_id, f"♻️ Сброшены предупреждения {label} · {_actor(message)}")
+    await _cleanup(bot, message)
 
 
 @router.message(Command("warns"))
-async def cmd_warns(message: Message) -> None:
+async def cmd_warns(message: Message, bot: Bot) -> None:
     target = _target(message)
     if not target:
         await message.reply("Ответь этой командой на сообщение пользователя.")
         return
     user_id, label = target
+    warn_limit = await settings.get_int("warn_limit", config.warn_limit)
     count = await db.get_warns(message.chat.id, user_id)
-    await message.reply(f"{label}: {count}/{config.warn_limit} предупреждений")
+    await message.answer(f"{label}: {count}/{warn_limit} предупреждений")
+    await _cleanup(bot, message)
 
 
 @router.message(Command("id"))
-async def cmd_id(message: Message) -> None:
+async def cmd_id(message: Message, bot: Bot) -> None:
     if message.reply_to_message and message.reply_to_message.from_user:
-        user = message.reply_to_message.from_user
-        await message.reply(f"ID: {user.id}")
-    else:
-        await message.reply(f"ID: {message.from_user.id}")
+        await message.answer(f"ID: {message.reply_to_message.from_user.id}")
+    elif message.from_user:
+        await message.answer(f"ID: {message.from_user.id}")
+    await _cleanup(bot, message)
 
 
 @router.message(Command("modhelp"))
-async def cmd_help(message: Message) -> None:
-    await message.reply(
-        "Команды модерации (в ответ на сообщение пользователя):\n"
-        "/ban [причина] — забанить\n"
+async def cmd_help(message: Message, bot: Bot) -> None:
+    await message.answer(
+        "🛠 <b>Команды модерации</b> (в ответ на сообщение пользователя):\n"
+        "/ban [причина] — забанить (тихо)\n"
         "/ban 1 — тихий бан без текста\n"
-        "/ban 2 — бан + текст с упоминанием (из панели)\n"
-        "/unban <user_id> — разбанить\n"
-        "/kick [причина] — кикнуть\n"
-        "/mute <минуты> [причина] — замьютить\n"
+        "/ban 2 — бан + текст-пресет с упоминанием\n"
+        "/unban &lt;user_id&gt; — разбанить\n"
+        "/kick — кикнуть (тихо)\n"
+        "/mute &lt;минуты&gt; — замьютить (тихо)\n"
         "/unmute — размьютить\n"
         "/warn [причина] — предупреждение\n"
         "/unwarn — сбросить предупреждения\n"
-        "/warns — показать число предупреждений\n"
-        "/check — выдать проверку с кнопками в ЛС\n"
-        "/id — узнать telegram ID"
+        "/warns — сколько предупреждений\n"
+        "/check — проверка с кнопками в ЛС\n"
+        "/id — узнать Telegram ID\n\n"
+        "Команды работают только у владельца чата и админов бота. "
+        "Своё командное сообщение бот старается удалять."
     )
+    await _cleanup(bot, message)

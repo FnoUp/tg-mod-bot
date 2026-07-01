@@ -91,17 +91,36 @@ async def get_recent_logs(limit: int = 15) -> list[tuple[int, str]]:
         return list(await cur.fetchall())
 
 
-async def count_logs() -> int:
-    async with _db.execute("SELECT COUNT(*) FROM action_log") as cur:
+# Фильтр истории по типу: сопоставление с ведущим эмодзи записи
+_LOG_KIND_LIKE = {"ban": "🚫%", "mute": "🔇%"}
+
+
+async def count_logs(kind: str = "all") -> int:
+    like = _LOG_KIND_LIKE.get(kind)
+    if like:
+        query, args = "SELECT COUNT(*) FROM action_log WHERE text LIKE ?", (like,)
+    else:
+        query, args = "SELECT COUNT(*) FROM action_log", ()
+    async with _db.execute(query, args) as cur:
         row = await cur.fetchone()
     return row[0] if row else 0
 
 
-async def get_logs_page(limit: int, offset: int) -> list[tuple[int, str]]:
-    async with _db.execute(
-        "SELECT ts, text FROM action_log ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)
-    ) as cur:
+async def get_logs_page(limit: int, offset: int, kind: str = "all") -> list[tuple[int, str]]:
+    like = _LOG_KIND_LIKE.get(kind)
+    if like:
+        query = "SELECT ts, text FROM action_log WHERE text LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?"
+        args: tuple = (like, limit, offset)
+    else:
+        query = "SELECT ts, text FROM action_log ORDER BY id DESC LIMIT ? OFFSET ?"
+        args = (limit, offset)
+    async with _db.execute(query, args) as cur:
         return list(await cur.fetchall())
+
+
+async def clear_logs() -> None:
+    await _db.execute("DELETE FROM action_log")
+    await _db.commit()
 
 
 async def get_setting(key: str) -> str | None:

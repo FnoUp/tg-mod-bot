@@ -9,7 +9,7 @@ from aiogram.types import CallbackQuery
 from bot import database as db
 from bot.config import config
 from bot.utils.access import is_bot_admin
-from bot.utils.moderation import create_invite, unban_user, unmute_user
+from bot.utils.moderation import create_invite, menu_markup, unban_user, unmute_user
 
 router = Router(name="undo")
 
@@ -59,8 +59,8 @@ async def on_undo(callback: CallbackQuery, bot: Bot) -> None:
     base = callback.message.text or ""
     suffix = f"\n\n{result}" + (f"\nОтменил: {actor}" if ok else "")
     try:
-        # reply_markup не передаём — кнопки убираются
-        await callback.message.edit_text(base + suffix)
+        # Кнопки бана убираем, но кнопку возврата в панель оставляем
+        await callback.message.edit_text(base + suffix, reply_markup=menu_markup())
     except Exception:
         pass
     await callback.answer("Готово" if ok else "Ошибка")

@@ -229,16 +229,25 @@ async def render_limits() -> tuple[str, InlineKeyboardMarkup]:
 
 
 HISTORY_PER_PAGE = 15
+HISTORY_KINDS = {"all": "Все", "ban": "Баны", "mute": "Мьюты"}
 
 
-async def render_history(page: int = 0) -> tuple[str, InlineKeyboardMarkup]:
-    total = await db.count_logs()
+def _filter_button(kind: str, current: str) -> InlineKeyboardButton:
+    title = HISTORY_KINDS[kind]
+    label = f"• {title} •" if kind == current else title
+    return InlineKeyboardButton(text=label, callback_data=f"hp:{kind}:0")
+
+
+async def render_history(kind: str = "all", page: int = 0) -> tuple[str, InlineKeyboardMarkup]:
+    if kind not in HISTORY_KINDS:
+        kind = "all"
+    total = await db.count_logs(kind)
     pages = max(1, (total + HISTORY_PER_PAGE - 1) // HISTORY_PER_PAGE)
     page = max(0, min(page, pages - 1))
-    entries = await db.get_logs_page(HISTORY_PER_PAGE, page * HISTORY_PER_PAGE)
+    entries = await db.get_logs_page(HISTORY_PER_PAGE, page * HISTORY_PER_PAGE, kind)
 
     if not entries:
-        body = "Пока пусто — бот ещё не совершал действий."
+        body = "Пусто."
     else:
         lines = []
         for ts, entry in entries:
@@ -247,20 +256,26 @@ async def render_history(page: int = 0) -> tuple[str, InlineKeyboardMarkup]:
         body = "\n\n".join(lines)  # пустая строка между записями
 
     text = (
-        f"🕓 <b>История действий</b> — стр. {page + 1}/{pages}, всего {total} (время — Пермь)\n\n"
-        + body
+        f"🕓 <b>История</b> — {HISTORY_KINDS[kind]}, стр. {page + 1}/{pages}, "
+        f"всего {total} (время — Пермь)\n\n" + body
     )
+
+    filter_row = [_filter_button(k, kind) for k in HISTORY_KINDS]
 
     # Навигация: [⏮][◀ N][· тек/всего ·][N ▶][⏭]
     nav: list[InlineKeyboardButton] = []
     if page > 0:
-        nav.append(InlineKeyboardButton(text="⏮", callback_data="hp:0"))
-        nav.append(InlineKeyboardButton(text=f"◀ {page}", callback_data=f"hp:{page - 1}"))
-    nav.append(InlineKeyboardButton(text=f"· {page + 1}/{pages} ·", callback_data=f"hp:{page}"))
+        nav.append(InlineKeyboardButton(text="⏮", callback_data=f"hp:{kind}:0"))
+        nav.append(InlineKeyboardButton(text=f"◀ {page}", callback_data=f"hp:{kind}:{page - 1}"))
+    nav.append(InlineKeyboardButton(text=f"· {page + 1}/{pages} ·", callback_data=f"hp:{kind}:{page}"))
     if page < pages - 1:
-        nav.append(InlineKeyboardButton(text=f"{page + 2} ▶", callback_data=f"hp:{page + 1}"))
-        nav.append(InlineKeyboardButton(text="⏭", callback_data=f"hp:{pages - 1}"))
-    return text, InlineKeyboardMarkup(inline_keyboard=[nav, _back_row()])
+        nav.append(InlineKeyboardButton(text=f"{page + 2} ▶", callback_data=f"hp:{kind}:{page + 1}"))
+        nav.append(InlineKeyboardButton(text="⏭", callback_data=f"hp:{kind}:{pages - 1}"))
+
+    rows = [filter_row, nav,
+            [InlineKeyboardButton(text="🗑 Очистить историю", callback_data="hclr:ask")],
+            _back_row()]
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def render_restore() -> tuple[str, InlineKeyboardMarkup]:
@@ -365,10 +380,30 @@ async def on_open_menu(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data.startswith("hp:"))
 async def on_history_page(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    page = int(callback.data.split(":", 1)[1])
-    text, kb = await render_history(page)
+    _, kind, page = callback.data.split(":")
+    text, kb = await render_history(kind, int(page))
     await _safe_edit(callback, text, kb)
     await callback.answer()
+
+
+@router.callback_query(F.data == "hclr:ask")
+async def on_history_clear_ask(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, очистить", callback_data="hclr:yes")],
+        [InlineKeyboardButton(text="⬅️ Отмена", callback_data="hp:all:0")],
+    ])
+    await _safe_edit(callback, "🗑 <b>Очистить всю историю действий?</b>\nЭто удалит все записи безвозвратно.", kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "hclr:yes")
+async def on_history_clear_yes(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await db.clear_logs()
+    text, kb = await render_history("all", 0)
+    await _safe_edit(callback, "✅ <b>История очищена.</b>\n\n" + text, kb)
+    await callback.answer("Очищено")
 
 
 @router.callback_query(F.data.startswith("t:"))

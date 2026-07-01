@@ -6,9 +6,17 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from bot import settings_store as settings
 from bot.config import config
-from bot.filters.admin import IsBotAdmin
+from bot.filters.admin import IsChatOwner
 from bot.utils.access import is_bot_admin
-from bot.utils.moderation import ban_user, mention, mute_user, notify_admins, punish_log, safe_delete
+from bot.utils.moderation import (
+    ban_user,
+    mention,
+    menu_markup,
+    mute_user,
+    notify_admins,
+    punish_log,
+    safe_delete,
+)
 
 router = Router(name="check")
 
@@ -17,7 +25,7 @@ PERM_TZ = timezone(timedelta(hours=5))  # Пермь = UTC+5
 RESTRICT_SECONDS = 365 * 24 * 3600
 
 
-@router.message(Command("check"), IsBotAdmin())
+@router.message(Command("check"), IsChatOwner())
 async def cmd_check(message: Message, bot: Bot) -> None:
     if not message.reply_to_message or not message.reply_to_message.from_user:
         await message.reply("Ответь командой /check на сообщение пользователя, которого проверяем.")
@@ -46,7 +54,8 @@ async def cmd_check(message: Message, bot: Bot) -> None:
                 InlineKeyboardButton(
                     text="🔒 Ограничить доступ", callback_data=f"chk_mute:{message.chat.id}:{target.id}"
                 ),
-            ]
+            ],
+            [InlineKeyboardButton(text="☰ Открыть панель", callback_data="openmenu")],
         ]
     )
     await notify_admins(
@@ -68,7 +77,17 @@ async def on_check_action(callback: CallbackQuery, bot: Bot) -> None:
 
     if action == "chk_ban":
         ok = await ban_user(bot, chat_id, user_id)
-        result = f"🚫 Пользователь {user_id} заблокирован." if ok else "⚠️ Не удалось заблокировать (админ чата?)."
+        if ok:
+            # Публикуем в чате тот же текст, что и /ban 2, с упоминанием
+            try:
+                member = await bot.get_chat_member(chat_id, user_id)
+                text = (await settings.get("ban_preset_2")).replace("{user}", mention(member.user))
+                await bot.send_message(chat_id, text)
+            except Exception:
+                pass
+            result = f"🚫 Пользователь {user_id} заблокирован."
+        else:
+            result = "⚠️ Не удалось заблокировать (админ чата?)."
     else:
         until = int(datetime.now(tz=timezone.utc).timestamp()) + RESTRICT_SECONDS
         ok = await mute_user(bot, chat_id, user_id, until_date=until)
@@ -86,7 +105,8 @@ async def on_check_action(callback: CallbackQuery, bot: Bot) -> None:
 
     actor = f"@{callback.from_user.username}" if callback.from_user.username else str(callback.from_user.id)
     await callback.message.edit_text(
-        f"{callback.message.text}\n\n✅ {result}\nВыполнил: {actor}"
+        f"{callback.message.text}\n\n✅ {result}\nВыполнил: {actor}",
+        reply_markup=menu_markup(),
     )
     await callback.answer("Готово")
     if ok:

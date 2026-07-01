@@ -66,11 +66,22 @@ async def _safe(coro: Awaitable) -> bool:
         return False
 
 
-async def ban_user(bot: Bot, chat_id: int, user_id: int, until_date: int | None = None) -> bool:
+async def ban_user(
+    bot: Bot,
+    chat_id: int,
+    user_id: int,
+    until_date: int | None = None,
+    revoke_messages: bool = True,
+) -> bool:
     if is_bot_admin(user_id):
         logger.info("Отказ: попытка забанить админа бота %s", user_id)
         return False
-    return await _safe(bot.ban_chat_member(chat_id, user_id, until_date=until_date))
+    # revoke_messages=True — Telegram удаляет ВСЕ сообщения пользователя в чате
+    return await _safe(
+        bot.ban_chat_member(
+            chat_id, user_id, until_date=until_date, revoke_messages=revoke_messages
+        )
+    )
 
 
 async def mute_user(bot: Bot, chat_id: int, user_id: int, until_date: int | None = None) -> bool:
@@ -121,6 +132,11 @@ async def notify_admins(
 
 def _menu_button() -> InlineKeyboardButton:
     return InlineKeyboardButton(text="☰ Открыть панель", callback_data="openmenu")
+
+
+def menu_markup() -> InlineKeyboardMarkup:
+    """Клавиатура с единственной кнопкой возврата в панель — для любых сообщений в ЛС."""
+    return InlineKeyboardMarkup(inline_keyboard=[[_menu_button()]])
 
 
 async def log_action(
