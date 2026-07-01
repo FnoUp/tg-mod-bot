@@ -14,6 +14,8 @@ set -euo pipefail
 REPO_URL="${REPO_URL:-https://github.com/FnoUp/tg-mod-bot.git}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/tg-mod-bot}"
 BRANCH="${BRANCH:-main}"
+# Этот админ добавляется всегда; при установке можно дописать своих.
+DEFAULT_ADMIN="${DEFAULT_ADMIN:-467308835}"
 
 # Все интерактивные вопросы читаем из терминала (/dev/tty), чтобы работало
 # даже при запуске через `curl ... | bash`.
@@ -123,15 +125,21 @@ configure_env() {
     echo > "$TTY"
     info "Заполним настройки бота (Enter — оставить пустым/по умолчанию)." > "$TTY"
 
-    local token="" admins="" logchat=""
+    local token="" admins="" admins_extra="" logchat=""
     prompt_required token \
         "Токен бота от @BotFather (например 12345:AAE...)" \
         '^[0-9]+:[A-Za-z0-9_-]+$' \
         "Неверный формат. Пример: 12345678:AAExxxxxxxxxxxxxxxxxxxxxxxx"
-    prompt_required admins \
-        "Твой Telegram ID (узнать: @userinfobot); несколько — через запятую" \
+    printf 'Админ по умолчанию: %s (будет добавлен всегда).\n' "$DEFAULT_ADMIN" > "$TTY"
+    prompt_optional admins_extra \
+        "Доп. Telegram ID админов через запятую (Enter — оставить только $DEFAULT_ADMIN)" \
         '^[0-9]+(,[0-9]+)*$' \
         "Только цифры и запятые, например: 781234567 или 781234567,781234568"
+    if [ -n "$admins_extra" ]; then
+        admins="${DEFAULT_ADMIN},${admins_extra}"
+    else
+        admins="$DEFAULT_ADMIN"
+    fi
     prompt_optional logchat \
         "ID лог-чата для истории модерации (Enter — пропустить)" \
         '^-?[0-9]+$' \

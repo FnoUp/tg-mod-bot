@@ -55,8 +55,7 @@ async def on_new_members(message: Message, bot: Bot) -> None:
                 await punish_log(
                     bot,
                     config.log_chat_id,
-                    f"🛡 АНТИ-РЕЙД в «{message.chat.title}»: массовый вход. "
-                    f"{label} автоматически ограничен.",
+                    f"🔇 Мьют {label} · антирейд (массовый вход) · авто",
                     action="mute", chat_id=message.chat.id, user_id=user.id, label=label,
                 )
             continue
@@ -98,9 +97,8 @@ async def on_captcha_ok(callback: CallbackQuery, bot: Bot) -> None:
         pass
     await safe_delete(bot, callback.message.chat.id, callback.message.message_id)
     await callback.answer("Добро пожаловать!")
-    await log_action(
-        bot, config.log_chat_id, f"✅ @{callback.from_user.username or expected_user_id} прошёл проверку"
-    )
+    passer = f"@{callback.from_user.username}" if callback.from_user.username else str(expected_user_id)
+    await log_action(bot, config.log_chat_id, f"✅ Капча пройдена · {passer}")
 
     # Приветствие + правила (если включено в панели)
     if await settings.get_bool("welcome_enabled"):
@@ -119,5 +117,5 @@ async def check_expired_captchas(bot: Bot) -> None:
         await kick_user(bot, chat_id, user_id)
         await safe_delete(bot, chat_id, message_id)
         await log_action(
-            bot, config.log_chat_id, f"⏱ Пользователь {user_id} исключён — не прошёл проверку вовремя"
+            bot, config.log_chat_id, f"👢 Кик id {user_id} · не прошёл капчу вовремя · авто"
         )

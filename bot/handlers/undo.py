@@ -44,8 +44,10 @@ async def on_undo(callback: CallbackQuery, bot: Bot) -> None:
         await db.delete_action(chat_id, user_id, action)
         # Пишем в историю и лог-чат, но НЕ рассылаем новое сообщение админам —
         # редактируем то, на котором нажали, чтобы не плодить дубли.
+        hist = (f"↩️ Разбан id {user_id} · {actor}" if action == "ban"
+                else f"🔊 Снятие ограничений id {user_id} · {actor}")
         try:
-            await db.add_log(f"{result} · отменил {actor}")
+            await db.add_log(hist)
         except Exception:
             pass
         if config.log_chat_id:

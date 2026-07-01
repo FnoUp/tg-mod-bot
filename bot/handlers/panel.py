@@ -243,22 +243,24 @@ async def render_history(page: int = 0) -> tuple[str, InlineKeyboardMarkup]:
         lines = []
         for ts, entry in entries:
             when = datetime.fromtimestamp(ts, PERM_TZ).strftime("%d.%m %H:%M")
-            lines.append(f"<b>{when}</b>  {_esc(entry)}")
-        body = "\n".join(lines)
+            lines.append(f"🕗 <b>{when}</b>\n{_esc(entry)}")
+        body = "\n\n".join(lines)  # пустая строка между записями
 
     text = (
-        f"🕓 <b>История действий</b> (стр. {page + 1}/{pages}, всего {total}, время — Пермь)\n\n"
+        f"🕓 <b>История действий</b> — стр. {page + 1}/{pages}, всего {total} (время — Пермь)\n\n"
         + body
     )
+
+    # Навигация: [⏮][◀ N][· тек/всего ·][N ▶][⏭]
     nav: list[InlineKeyboardButton] = []
     if page > 0:
-        nav.append(InlineKeyboardButton(text="⬅️ Пред.", callback_data=f"hp:{page - 1}"))
+        nav.append(InlineKeyboardButton(text="⏮", callback_data="hp:0"))
+        nav.append(InlineKeyboardButton(text=f"◀ {page}", callback_data=f"hp:{page - 1}"))
+    nav.append(InlineKeyboardButton(text=f"· {page + 1}/{pages} ·", callback_data=f"hp:{page}"))
     if page < pages - 1:
-        nav.append(InlineKeyboardButton(text="След. ➡️", callback_data=f"hp:{page + 1}"))
-    rows = [nav] if nav else []
-    rows.append([InlineKeyboardButton(text="🔄 Обновить", callback_data=f"hp:{page}")])
-    rows.append(_back_row())
-    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+        nav.append(InlineKeyboardButton(text=f"{page + 2} ▶", callback_data=f"hp:{page + 1}"))
+        nav.append(InlineKeyboardButton(text="⏭", callback_data=f"hp:{pages - 1}"))
+    return text, InlineKeyboardMarkup(inline_keyboard=[nav, _back_row()])
 
 
 async def render_restore() -> tuple[str, InlineKeyboardMarkup]:
