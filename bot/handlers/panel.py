@@ -51,6 +51,12 @@ FIELDS: dict[str, tuple[str, str, str, str]] = {
     "duplicate_limit": ("Лимит одинаковых сообщений", "int", "limits", "Целое число ≥ 1."),
     "check_offset_hours": ("Дедлайн /check, часов", "int", "limits",
                            "Через сколько часов ставить время в тексте /check. Целое ≥ 1."),
+    "flood_message_limit": ("Флуд: сообщений", "int", "limits",
+                            "Сколько сообщений подряд разрешено. Целое ≥ 1."),
+    "flood_interval_seconds": ("Флуд: за секунд", "int", "limits",
+                               "За какое окно (секунд) считать сообщения. Целое ≥ 1."),
+    "flood_mute_minutes": ("Флуд: мьют минут", "int", "limits",
+                           "На сколько минут мьютить за флуд. Целое ≥ 1."),
 }
 
 # Тумблеры: key -> (заголовок, раздел)
@@ -199,16 +205,24 @@ async def render_limits() -> tuple[str, InlineKeyboardMarkup]:
     warn = await settings.get_int("warn_limit", config.warn_limit)
     dup = await settings.get_int("duplicate_limit", config.duplicate_limit)
     check_h = await settings.get_int("check_offset_hours", 1)
+    fmsg = await settings.get_int("flood_message_limit", config.flood_message_limit)
+    fint = await settings.get_int("flood_interval_seconds", config.flood_interval_seconds)
+    fmute = await settings.get_int("flood_mute_minutes", config.flood_mute_minutes)
     text = (
         "🔢 <b>Лимиты</b>\n\n"
         f"⚠️ Предупреждений до бана: <b>{warn}</b>\n"
         f"♻️ Одинаковых сообщений подряд: <b>{dup}</b>\n"
-        f"⏱ Дедлайн /check: <b>+{check_h} ч</b>"
+        f"⏱ Дедлайн /check: <b>+{check_h} ч</b>\n\n"
+        f"🚨 <b>Антифлуд:</b> мьют, если больше <b>{fmsg}</b> сообщений "
+        f"за <b>{fint}</b> сек → мьют на <b>{fmute}</b> мин."
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"⚠️ Предупреждений до бана: {warn}", callback_data="e:warn_limit:limits")],
         [InlineKeyboardButton(text=f"♻️ Лимит повторов: {dup}", callback_data="e:duplicate_limit:limits")],
         [InlineKeyboardButton(text=f"⏱ Дедлайн /check: +{check_h} ч", callback_data="e:check_offset_hours:limits")],
+        [InlineKeyboardButton(text=f"🚨 Флуд: сообщений {fmsg}", callback_data="e:flood_message_limit:limits")],
+        [InlineKeyboardButton(text=f"🚨 Флуд: за секунд {fint}", callback_data="e:flood_interval_seconds:limits")],
+        [InlineKeyboardButton(text=f"🚨 Флуд: мьют минут {fmute}", callback_data="e:flood_mute_minutes:limits")],
         _back_row(),
     ])
     return text, kb
@@ -334,6 +348,15 @@ async def on_nav(callback: CallbackQuery, state: FSMContext) -> None:
     menu = callback.data.split(":", 1)[1]
     text, kb = await render(menu)
     await _safe_edit(callback, text, kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "openmenu")
+async def on_open_menu(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    text, kb = await render_main()
+    # Новым сообщением снизу, чтобы не терять уведомление и не «улетало» меню
+    await callback.message.answer(text, reply_markup=kb)
     await callback.answer()
 
 

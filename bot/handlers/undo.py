@@ -9,7 +9,7 @@ from aiogram.types import CallbackQuery
 from bot import database as db
 from bot.config import config
 from bot.utils.access import is_bot_admin
-from bot.utils.moderation import create_invite, log_action, unban_user, unmute_user
+from bot.utils.moderation import create_invite, unban_user, unmute_user
 
 router = Router(name="undo")
 
@@ -39,14 +39,26 @@ async def on_undo(callback: CallbackQuery, bot: Bot) -> None:
         await callback.answer("Неизвестное действие.", show_alert=True)
         return
 
+    actor = f"@{callback.from_user.username}" if callback.from_user.username else str(callback.from_user.id)
     if ok:
         await db.delete_action(chat_id, user_id, action)
-        actor = f"@{callback.from_user.username}" if callback.from_user.username else str(callback.from_user.id)
-        await log_action(bot, config.log_chat_id, f"{result}\nОтменил: {actor}")
+        # Пишем в историю и лог-чат, но НЕ рассылаем новое сообщение админам —
+        # редактируем то, на котором нажали, чтобы не плодить дубли.
+        try:
+            await db.add_log(f"{result} · отменил {actor}")
+        except Exception:
+            pass
+        if config.log_chat_id:
+            try:
+                await bot.send_message(config.log_chat_id, f"{result}\nОтменил: {actor}")
+            except Exception:
+                pass
 
     base = callback.message.text or ""
+    suffix = f"\n\n{result}" + (f"\nОтменил: {actor}" if ok else "")
     try:
-        await callback.message.edit_text(f"{base}\n\n{result}")
+        # reply_markup не передаём — кнопки убираются
+        await callback.message.edit_text(base + suffix)
     except Exception:
-        await callback.message.answer(result)
+        pass
     await callback.answer("Готово" if ok else "Ошибка")

@@ -33,20 +33,24 @@ class AntiFloodMiddleware(BaseMiddleware):
         if not await settings.get_bool("antiflood_enabled"):
             return await handler(event, data)
 
+        msg_limit = await settings.get_int("flood_message_limit", config.flood_message_limit)
+        interval = await settings.get_int("flood_interval_seconds", config.flood_interval_seconds)
+        mute_minutes = await settings.get_int("flood_mute_minutes", config.flood_mute_minutes)
+
         key = (event.chat.id, event.from_user.id)
         now = time.monotonic()
         history = self._history[key]
         history.append(now)
-        cutoff = now - config.flood_interval_seconds
+        cutoff = now - interval
         while history and history[0] < cutoff:
             history.popleft()
 
-        if len(history) <= config.flood_message_limit:
+        if len(history) <= msg_limit:
             return await handler(event, data)
 
         history.clear()
         bot: Bot = data["bot"]
-        until = int(time.time()) + config.flood_mute_minutes * 60
+        until = int(time.time()) + mute_minutes * 60
         muted = await mute_user(bot, event.chat.id, event.from_user.id, until_date=until)
         await safe_delete(bot, event.chat.id, event.message_id)
         if muted:
@@ -54,8 +58,7 @@ class AntiFloodMiddleware(BaseMiddleware):
             await punish_log(
                 bot,
                 config.log_chat_id,
-                f"🔇 Флуд: {label} замьючен на {config.flood_mute_minutes} мин. "
-                f"в чате «{event.chat.title}»",
+                f"🔇 Флуд: {label} замьючен на {mute_minutes} мин. в чате «{event.chat.title}»",
                 action="mute", chat_id=event.chat.id, user_id=event.from_user.id, label=label,
             )
         return None

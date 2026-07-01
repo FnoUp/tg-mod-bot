@@ -119,13 +119,18 @@ async def notify_admins(
         await _safe(bot.send_message(admin_id, text, reply_markup=reply_markup))
 
 
+def _menu_button() -> InlineKeyboardButton:
+    return InlineKeyboardButton(text="☰ Открыть панель", callback_data="openmenu")
+
+
 async def log_action(bot: Bot, log_chat_id: int | None, text: str) -> None:
     """Пишет событие в историю (БД), в ЛС всем админам и в лог-чат (если задан)."""
     try:
         await db.add_log(text)
     except Exception:
         pass
-    await notify_admins(bot, text)
+    markup = InlineKeyboardMarkup(inline_keyboard=[[_menu_button()]])
+    await notify_admins(bot, text, reply_markup=markup)
     if log_chat_id:
         await _safe(bot.send_message(log_chat_id, text))
 
@@ -160,12 +165,12 @@ async def punish_log(
         await db.add_action(chat_id, user_id, action, label)
     except Exception:
         pass
-    markup = None
+    rows = []
     if action in ("ban", "mute"):
         undo_label = "↩️ Разбанить и вернуть" if action == "ban" else "↩️ Снять ограничения"
-        markup = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text=undo_label, callback_data=f"undo:{action}:{chat_id}:{user_id}")
-        ]])
-    await notify_admins(bot, text, reply_markup=markup)
+        rows.append([InlineKeyboardButton(
+            text=undo_label, callback_data=f"undo:{action}:{chat_id}:{user_id}")])
+    rows.append([_menu_button()])
+    await notify_admins(bot, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
     if log_chat_id:
         await _safe(bot.send_message(log_chat_id, text))

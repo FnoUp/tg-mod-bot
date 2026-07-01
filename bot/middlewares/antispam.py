@@ -71,11 +71,12 @@ class AntiSpamMiddleware(BaseMiddleware):
         await safe_delete(bot, event.chat.id, event.message_id)
         label = f"@{event.from_user.username}" if event.from_user.username else event.from_user.full_name
         uid = event.from_user.id
+        snippet = " ".join(text.split())[:200] or "(без текста)"
 
         if is_hard_ban:
             if await ban_user(bot, event.chat.id, uid):
                 await punish_log(
-                    bot, config.log_chat_id, f"🚫 Забанен {label}: {violation}",
+                    bot, config.log_chat_id, f"🚫 Забанен {label}: {violation}\n💬 {snippet}",
                     action="ban", chat_id=event.chat.id, user_id=uid, label=label,
                 )
             else:
@@ -91,7 +92,7 @@ class AntiSpamMiddleware(BaseMiddleware):
         await log_action(
             bot,
             config.log_chat_id,
-            f"⚠️ {label}: {violation} (предупреждение {count}/{warn_limit})",
+            f"⚠️ {label}: {violation} (предупреждение {count}/{warn_limit})\n💬 {snippet}",
         )
         if count >= warn_limit:
             if await ban_user(bot, event.chat.id, uid):

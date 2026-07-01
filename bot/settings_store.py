@@ -57,6 +57,9 @@ DEFAULTS: dict[str, str] = {
     "warn_limit": str(config.warn_limit),
     "duplicate_limit": str(config.duplicate_limit),
     "check_offset_hours": "1",
+    "flood_message_limit": str(config.flood_message_limit),
+    "flood_interval_seconds": str(config.flood_interval_seconds),
+    "flood_mute_minutes": str(config.flood_mute_minutes),
 }
 
 _cache: dict[str, str] = {}
