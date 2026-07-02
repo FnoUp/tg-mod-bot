@@ -7,10 +7,13 @@ from bot.utils.access import is_bot_admin
 
 
 class IsBotAdmin(BaseFilter):
-    """Пропускает только доверенных админов бота (ADMIN_IDS)."""
+    """Пропускает только доверенных админов бота (базовые + добавленные).
 
-    async def __call__(self, message: Message) -> bool:
-        return is_bot_admin(message.from_user.id if message.from_user else None)
+    Работает и для Message, и для CallbackQuery — оба имеют from_user."""
+
+    async def __call__(self, event) -> bool:
+        user = getattr(event, "from_user", None)
+        return is_bot_admin(user.id if user else None)
 
 
 class IsChatOwner(BaseFilter):

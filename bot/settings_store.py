@@ -60,6 +60,8 @@ DEFAULTS: dict[str, str] = {
     "flood_message_limit": str(config.flood_message_limit),
     "flood_interval_seconds": str(config.flood_interval_seconds),
     "flood_mute_minutes": str(config.flood_mute_minutes),
+    # Добавленные из панели админы бота (ID через запятую)
+    "extra_admins": "",
 }
 
 _cache: dict[str, str] = {}

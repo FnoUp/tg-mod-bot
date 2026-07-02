@@ -18,16 +18,23 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from bot import database as db
 from bot import settings_store as settings
 from bot.config import config
+from bot.filters.admin import IsBotAdmin
+from bot.utils import access
 from bot.utils.moderation import safe_delete
 
 PERM_TZ = timezone(timedelta(hours=5))  # Пермь = UTC+5
 
 router = Router(name="panel")
-router.message.filter(F.chat.type == ChatType.PRIVATE, F.from_user.id.in_(config.admin_ids))
-router.callback_query.filter(F.from_user.id.in_(config.admin_ids))
+# Доступ к панели — базовые (.env) + добавленные из меню админы
+router.message.filter(F.chat.type == ChatType.PRIVATE, IsBotAdmin())
+router.callback_query.filter(IsBotAdmin())
 
 
 class Editing(StatesGroup):
+    value = State()
+
+
+class AddAdmin(StatesGroup):
     value = State()
 
 
@@ -105,6 +112,7 @@ async def render_main() -> tuple[str, InlineKeyboardMarkup]:
         [InlineKeyboardButton(text="♻️ Вернуть пользователя", callback_data="m:restore")],
         [InlineKeyboardButton(text="📊 Статистика за неделю", callback_data="m:stats")],
         [InlineKeyboardButton(text="🕓 История действий", callback_data="m:history")],
+        [InlineKeyboardButton(text="👑 Админы бота", callback_data="m:admins")],
     ])
     return text, kb
 
@@ -324,6 +332,22 @@ async def render_stats() -> tuple[str, InlineKeyboardMarkup]:
     return text, kb
 
 
+async def render_admins() -> tuple[str, InlineKeyboardMarkup]:
+    env = access.get_env_admins()
+    extra = access.get_extra_admins()
+    text = (
+        "👑 <b>Админы бота</b>\n\n"
+        "У них есть доступ к этой панели, к командам в чате и иммунитет от модерации.\n\n"
+        f"<b>Базовые</b> (из .env, убрать нельзя):\n{', '.join(map(str, env)) or '—'}\n\n"
+        f"<b>Добавленные</b>:\n{', '.join(map(str, extra)) or 'нет'}"
+    )
+    rows = [[InlineKeyboardButton(text="➕ Добавить админа", callback_data="adm_add")]]
+    for uid in extra:
+        rows.append([InlineKeyboardButton(text=f"🗑 Убрать {uid}", callback_data=f"adm_del:{uid}")])
+    rows.append(_back_row())
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 MENUS = {
     "main": render_main,
     "texts": render_texts,
@@ -335,6 +359,7 @@ MENUS = {
     "restore": render_restore,
     "stats": render_stats,
     "history": render_history,
+    "admins": render_admins,
 }
 
 
@@ -404,6 +429,61 @@ async def on_history_clear_yes(callback: CallbackQuery, state: FSMContext) -> No
     text, kb = await render_history("all", 0)
     await _safe_edit(callback, "✅ <b>История очищена.</b>\n\n" + text, kb)
     await callback.answer("Очищено")
+
+
+# --- Управление админами бота ---
+
+@router.callback_query(F.data == "adm_add")
+async def on_admin_add(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(AddAdmin.value)
+    await state.update_data(mid=callback.message.message_id, cid=callback.message.chat.id)
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Отмена", callback_data="m:admins")]])
+    await callback.message.edit_text(
+        "👑 <b>Добавить админа</b>\n\n"
+        "Пришли <b>Telegram ID</b> пользователя (только цифры).\n"
+        "Как узнать: пусть человек напишет боту @userinfobot, или ответь на его "
+        "сообщение в чате командой /id.\n\nОтмена — кнопка ниже или /cancel.",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.message(AddAdmin.value, Command("cancel"))
+async def on_admin_add_cancel(message: Message, state: FSMContext, bot: Bot) -> None:
+    data = await state.get_data()
+    await state.clear()
+    await safe_delete(bot, message.chat.id, message.message_id)
+    await _return_to_menu(bot, data["cid"], data["mid"], "admins")
+
+
+@router.message(AddAdmin.value, F.text)
+async def on_admin_add_value(message: Message, state: FSMContext, bot: Bot) -> None:
+    data = await state.get_data()
+    val = message.text.strip()
+    if not val.lstrip("-").isdigit():
+        await message.reply("Нужен числовой Telegram ID. Пришли ещё раз или /cancel.")
+        return
+    uid = int(val)
+    ids = await settings.get_list("extra_admins")
+    if str(uid) not in ids:
+        ids.append(str(uid))
+        await settings.set("extra_admins", ",".join(ids))
+    access.add_extra_admin(uid)
+    await state.clear()
+    await safe_delete(bot, message.chat.id, message.message_id)
+    await _return_to_menu(bot, data["cid"], data["mid"], "admins", prefix=f"✅ <b>Админ {uid} добавлен.</b>\n\n")
+
+
+@router.callback_query(F.data.startswith("adm_del:"))
+async def on_admin_del(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    uid = int(callback.data.split(":", 1)[1])
+    ids = [x for x in await settings.get_list("extra_admins") if x != str(uid)]
+    await settings.set("extra_admins", ",".join(ids))
+    access.remove_extra_admin(uid)
+    text, kb = await render_admins()
+    await _safe_edit(callback, f"✅ <b>Админ {uid} убран.</b>\n\n" + text, kb)
+    await callback.answer("Убрано")
 
 
 @router.callback_query(F.data.startswith("t:"))

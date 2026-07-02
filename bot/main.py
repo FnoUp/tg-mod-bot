@@ -7,8 +7,10 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from bot import database as db
+from bot import settings_store as settings
 from bot.config import config
 from bot.handlers import admin, check, newmembers, panel, undo
+from bot.utils import access
 from bot.middlewares.antidup import AntiDuplicateMiddleware
 from bot.middlewares.antiflood import AntiFloodMiddleware
 from bot.middlewares.antispam import AntiSpamMiddleware
@@ -26,6 +28,10 @@ async def _background_loop(bot: Bot) -> None:
 async def main() -> None:
     logging.basicConfig(level=logging.INFO)
     await db.init_db(config.db_path)
+
+    # Загружаем добавленных из панели админов в память
+    extra = await settings.get_list("extra_admins")
+    access.set_extra_admins(int(x) for x in extra if x.isdigit())
 
     bot = Bot(token=config.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
