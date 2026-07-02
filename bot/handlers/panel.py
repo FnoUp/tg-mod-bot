@@ -228,7 +228,7 @@ async def render_limits() -> tuple[str, InlineKeyboardMarkup]:
     return text, kb
 
 
-HISTORY_PER_PAGE = 15
+HISTORY_PER_PAGE = 10
 HISTORY_KINDS = {"all": "Все", "ban": "Баны", "mute": "Мьюты"}
 
 

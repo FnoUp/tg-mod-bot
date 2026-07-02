@@ -111,10 +111,10 @@ async def on_check_action(callback: CallbackQuery, bot: Bot) -> None:
     await callback.answer("Готово")
     if ok:
         if action == "chk_ban":
-            hist = f"🚫 Бан id {user_id} · проверка · {actor}"
+            hist = f"🚫 Бан id {user_id} · ручной {actor}: проверка"
             punish_action = "ban"
         else:
-            hist = f"🔇 Мьют id {user_id} · проверка · {actor}"
+            hist = f"🔇 Мьют id {user_id} · ручной {actor}: проверка"
             punish_action = "mute"
         await punish_log(
             bot, config.log_chat_id, hist,

@@ -58,7 +58,7 @@ class AntiFloodMiddleware(BaseMiddleware):
             await punish_log(
                 bot,
                 config.log_chat_id,
-                f"🔇 Мьют {label} · флуд, {mute_minutes} мин · авто",
+                f"🔇 Мьют {label} · авто: флуд, {mute_minutes} мин",
                 action="mute", chat_id=event.chat.id, user_id=event.from_user.id, label=label,
             )
         return None

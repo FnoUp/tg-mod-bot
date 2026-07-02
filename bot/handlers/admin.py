@@ -38,6 +38,19 @@ def _reason(message: Message, command_len: int = 1) -> str:
     return parts[command_len] if len(parts) > command_len else "не указана"
 
 
+def _snippet(message: Message) -> str:
+    """Текст сообщения, на которое отвечают командой (для истории)."""
+    reply = message.reply_to_message
+    if not reply:
+        return ""
+    text = reply.text or reply.caption or ""
+    return " ".join(text.split())[:150]
+
+
+def _with_msg(text: str, snippet: str) -> str:
+    return f"{text}\n💬 {snippet}" if snippet else text
+
+
 def _actor(message: Message) -> str:
     user = message.from_user
     if user and user.username:
@@ -74,6 +87,8 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
     user_id, label = target
     ru = message.reply_to_message.from_user
     arg = _reason(message)
+    snippet = _snippet(message)
+    actor = _actor(message)
 
     # /ban 1 — тихий бан без текста
     if arg == "1":
@@ -82,7 +97,8 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
         if ok:
             await safe_delete(bot, message.chat.id, message.reply_to_message.message_id)
             await punish_log(
-                bot, config.log_chat_id, f"🚫 Бан {label} · тихий (/ban 1) · {_actor(message)}",
+                bot, config.log_chat_id,
+                _with_msg(f"🚫 Бан {label} · ручной {actor}: тихий", snippet),
                 action="ban", chat_id=message.chat.id, user_id=user_id, label=label,
             )
         else:
@@ -98,7 +114,8 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
         if ok:
             await message.reply_to_message.reply(preset_text)
             await punish_log(
-                bot, config.log_chat_id, f"🚫 Бан {label} · пресет 2 · {_actor(message)}",
+                bot, config.log_chat_id,
+                _with_msg(f"🚫 Бан {label} · ручной {actor}: пресет 2", snippet),
                 action="ban", chat_id=message.chat.id, user_id=user_id, label=label,
             )
         else:
@@ -107,11 +124,13 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
         return
 
     # Обычный /ban [причина] — тихо, уведомление только в ЛС
+    reason = arg if arg != "не указана" else "без причины"
     ok = await ban_user(bot, message.chat.id, user_id)
     await db.reset_warns(message.chat.id, user_id)
     if ok:
         await punish_log(
-            bot, config.log_chat_id, f"🚫 Бан {label} · {arg} · {_actor(message)}",
+            bot, config.log_chat_id,
+            _with_msg(f"🚫 Бан {label} · ручной {actor}: {reason}", snippet),
             action="ban", chat_id=message.chat.id, user_id=user_id, label=label,
         )
     else:
@@ -142,7 +161,8 @@ async def cmd_kick(message: Message, bot: Bot) -> None:
     # /kick — тихий: в беседе ничего не пишем
     if await kick_user(bot, message.chat.id, user_id):
         await punish_log(
-            bot, config.log_chat_id, f"👢 Кик {label} · {_actor(message)}",
+            bot, config.log_chat_id,
+            _with_msg(f"👢 Кик {label} · ручной {_actor(message)}", _snippet(message)),
             action="kick", chat_id=message.chat.id, user_id=user_id, label=label,
         )
     else:
@@ -161,7 +181,8 @@ async def cmd_mute(message: Message, bot: Bot) -> None:
     until = int(time.time()) + minutes * 60
     if await mute_user(bot, message.chat.id, user_id, until_date=until):
         await punish_log(
-            bot, config.log_chat_id, f"🔇 Мьют {label} · {minutes} мин · {_actor(message)}",
+            bot, config.log_chat_id,
+            _with_msg(f"🔇 Мьют {label} · ручной {_actor(message)}: {minutes} мин", _snippet(message)),
             action="mute", chat_id=message.chat.id, user_id=user_id, label=label,
         )
     else:
@@ -202,9 +223,14 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
         else:
             await message.reply("⚠️ Лимит предупреждений превышен, но забанить не удалось.")
     else:
+        display_reason = reason if reason != "не указана" else "без причины"
         await log_action(
             bot, config.log_chat_id,
-            f"⚠️ Предупреждение {label} · {reason} ({count}/{warn_limit}) · {_actor(message)}",
+            _with_msg(
+                f"⚠️ Предупреждение {label} · ручной {_actor(message)}: "
+                f"{display_reason} ({count}/{warn_limit})",
+                _snippet(message),
+            ),
         )
     await _cleanup(bot, message)
 

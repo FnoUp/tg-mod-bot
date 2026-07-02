@@ -55,7 +55,7 @@ async def on_new_members(message: Message, bot: Bot) -> None:
                 await punish_log(
                     bot,
                     config.log_chat_id,
-                    f"🔇 Мьют {label} · антирейд (массовый вход) · авто",
+                    f"🔇 Мьют {label} · авто: антирейд (массовый вход)",
                     action="mute", chat_id=message.chat.id, user_id=user.id, label=label,
                 )
             continue
