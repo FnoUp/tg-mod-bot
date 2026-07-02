@@ -76,8 +76,8 @@ class AntiSpamMiddleware(BaseMiddleware):
         if is_hard_ban:
             if await ban_user(bot, event.chat.id, uid):
                 await punish_log(
-                    bot, config.log_chat_id, f"🚫 Бан {label} · авто: {violation}\n💬 {snippet}",
-                    action="ban", chat_id=event.chat.id, user_id=uid, label=label,
+                    bot, config.log_chat_id, f"🚫 Бан {label} · авто: {violation}",
+                    action="ban", chat_id=event.chat.id, user_id=uid, label=label, detail=snippet,
                 )
             else:
                 await notify_admins(
@@ -92,14 +92,15 @@ class AntiSpamMiddleware(BaseMiddleware):
         await log_action(
             bot,
             config.log_chat_id,
-            f"⚠️ Предупреждение {label} · авто: {violation} ({count}/{warn_limit})\n💬 {snippet}",
+            f"⚠️ Предупреждение {label} · авто: {violation} ({count}/{warn_limit})",
+            detail=snippet,
         )
         if count >= warn_limit:
             if await ban_user(bot, event.chat.id, uid):
                 await db.reset_warns(event.chat.id, uid)
                 await punish_log(
                     bot, config.log_chat_id, f"🚫 Бан {label} · авто: лимит предупреждений",
-                    action="ban", chat_id=event.chat.id, user_id=uid, label=label,
+                    action="ban", chat_id=event.chat.id, user_id=uid, label=label, detail=snippet,
                 )
             else:
                 await notify_admins(

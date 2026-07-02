@@ -10,5 +10,5 @@ data/
 # Python
 __pycache__/
 *.py[cod]
-.venv/
+.venv*/
 .venv_check/

@@ -39,16 +39,12 @@ def _reason(message: Message, command_len: int = 1) -> str:
 
 
 def _snippet(message: Message) -> str:
-    """Текст сообщения, на которое отвечают командой (для истории)."""
+    """Текст сообщения, на которое отвечают командой (уходит только в ЛС-уведомление)."""
     reply = message.reply_to_message
     if not reply:
         return ""
     text = reply.text or reply.caption or ""
     return " ".join(text.split())[:150]
-
-
-def _with_msg(text: str, snippet: str) -> str:
-    return f"{text}\n💬 {snippet}" if snippet else text
 
 
 def _actor(message: Message) -> str:
@@ -97,9 +93,8 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
         if ok:
             await safe_delete(bot, message.chat.id, message.reply_to_message.message_id)
             await punish_log(
-                bot, config.log_chat_id,
-                _with_msg(f"🚫 Бан {label} · ручной {actor}: тихий", snippet),
-                action="ban", chat_id=message.chat.id, user_id=user_id, label=label,
+                bot, config.log_chat_id, f"🚫 Бан {label} · ручной {actor}: тихий",
+                action="ban", chat_id=message.chat.id, user_id=user_id, label=label, detail=snippet,
             )
         else:
             await message.reply("⚠️ Не удалось забанить (возможно, цель — админ чата).")
@@ -114,9 +109,8 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
         if ok:
             await message.reply_to_message.reply(preset_text)
             await punish_log(
-                bot, config.log_chat_id,
-                _with_msg(f"🚫 Бан {label} · ручной {actor}: пресет 2", snippet),
-                action="ban", chat_id=message.chat.id, user_id=user_id, label=label,
+                bot, config.log_chat_id, f"🚫 Бан {label} · ручной {actor}: пресет 2",
+                action="ban", chat_id=message.chat.id, user_id=user_id, label=label, detail=snippet,
             )
         else:
             await message.reply("⚠️ Не удалось забанить (возможно, цель — админ чата).")
@@ -129,9 +123,8 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
     await db.reset_warns(message.chat.id, user_id)
     if ok:
         await punish_log(
-            bot, config.log_chat_id,
-            _with_msg(f"🚫 Бан {label} · ручной {actor}: {reason}", snippet),
-            action="ban", chat_id=message.chat.id, user_id=user_id, label=label,
+            bot, config.log_chat_id, f"🚫 Бан {label} · ручной {actor}: {reason}",
+            action="ban", chat_id=message.chat.id, user_id=user_id, label=label, detail=snippet,
         )
     else:
         await message.reply("⚠️ Не удалось забанить (возможно, цель — админ чата).")
@@ -161,9 +154,9 @@ async def cmd_kick(message: Message, bot: Bot) -> None:
     # /kick — тихий: в беседе ничего не пишем
     if await kick_user(bot, message.chat.id, user_id):
         await punish_log(
-            bot, config.log_chat_id,
-            _with_msg(f"👢 Кик {label} · ручной {_actor(message)}", _snippet(message)),
+            bot, config.log_chat_id, f"👢 Кик {label} · ручной {_actor(message)}",
             action="kick", chat_id=message.chat.id, user_id=user_id, label=label,
+            detail=_snippet(message),
         )
     else:
         await message.reply("⚠️ Не удалось кикнуть (возможно, цель — админ чата).")
@@ -181,9 +174,9 @@ async def cmd_mute(message: Message, bot: Bot) -> None:
     until = int(time.time()) + minutes * 60
     if await mute_user(bot, message.chat.id, user_id, until_date=until):
         await punish_log(
-            bot, config.log_chat_id,
-            _with_msg(f"🔇 Мьют {label} · ручной {_actor(message)}: {minutes} мин", _snippet(message)),
+            bot, config.log_chat_id, f"🔇 Мьют {label} · ручной {_actor(message)}: {minutes} мин",
             action="mute", chat_id=message.chat.id, user_id=user_id, label=label,
+            detail=_snippet(message),
         )
     else:
         await message.reply("⚠️ Не удалось замьютить (возможно, цель — админ чата).")
@@ -226,11 +219,9 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
         display_reason = reason if reason != "не указана" else "без причины"
         await log_action(
             bot, config.log_chat_id,
-            _with_msg(
-                f"⚠️ Предупреждение {label} · ручной {_actor(message)}: "
-                f"{display_reason} ({count}/{warn_limit})",
-                _snippet(message),
-            ),
+            f"⚠️ Предупреждение {label} · ручной {_actor(message)}: "
+            f"{display_reason} ({count}/{warn_limit})",
+            detail=_snippet(message),
         )
     await _cleanup(bot, message)
 
