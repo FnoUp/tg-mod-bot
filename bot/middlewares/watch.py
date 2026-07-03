@@ -7,24 +7,13 @@ from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware, Bot
 from aiogram.enums import ChatMemberStatus, ChatType
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import Message
 
 from bot import database as db
 from bot import settings_store as settings
 from bot.utils import msgtrack
 from bot.utils.access import is_bot_admin
-from bot.utils.moderation import mention, notify_admins
-
-
-def _first_msg_keyboard(chat_id: int, user_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🔇 Мут", callback_data=f"fm_mute:{chat_id}:{user_id}"),
-            InlineKeyboardButton(text="🚫 Бан", callback_data=f"fm_ban:{chat_id}:{user_id}"),
-            InlineKeyboardButton(text="👢 Кик", callback_data=f"fm_kick:{chat_id}:{user_id}"),
-        ],
-        [InlineKeyboardButton(text="☰ Открыть панель", callback_data="openmenu")],
-    ])
+from bot.utils.moderation import mention, notify_admins, quick_action_markup
 
 
 async def _is_chat_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
@@ -63,7 +52,7 @@ class MessageWatchMiddleware(BaseMiddleware):
                             bot,
                             f"🆕 Первое сообщение от {mention(event.from_user)} "
                             f"(id {uid}) в «{event.chat.title}»:\n💬 {snippet}",
-                            reply_markup=_first_msg_keyboard(event.chat.id, uid),
+                            reply_markup=quick_action_markup(event.chat.id, uid),
                         )
 
         return await handler(event, data)

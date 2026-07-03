@@ -33,6 +33,11 @@ WELCOME_TEXT_DEFAULT = (
     "Реклама, спам и оскорбления запрещены — за нарушение бан."
 )
 
+DUP_WARN_TEXT_DEFAULT = (
+    "{user}, пожалуйста, не отправляйте одно и то же сообщение несколько раз — "
+    "повторы удаляются автоматически."
+)
+
 # Значения по умолчанию. Списки хранятся строкой через запятую.
 DEFAULTS: dict[str, str] = {
     # Тексты
@@ -40,6 +45,7 @@ DEFAULTS: dict[str, str] = {
     "ban_preset_2": BAN_PRESET_2_DEFAULT,
     "restrict_message": RESTRICT_MESSAGE_DEFAULT,
     "welcome_text": WELCOME_TEXT_DEFAULT,
+    "dup_warn_text": DUP_WARN_TEXT_DEFAULT,
     # Модули (вкл/выкл)
     "antispam_enabled": "true",
     "antiflood_enabled": "true",

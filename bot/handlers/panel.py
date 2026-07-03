@@ -48,6 +48,8 @@ FIELDS: dict[str, tuple[str, str, str, str]] = {
                          "Публикуется при нажатии «Ограничить доступ». {user} — упоминание."),
     "welcome_text": ("Приветствие новичка", "text", "texts",
                      "Отправляется после прохождения капчи. {user} — упоминание."),
+    "dup_warn_text": ("Предупреждение о повторах", "text", "texts",
+                      "Пишется нарушителю в чат раз в 24 ч. {user} — упоминание."),
     "ban_words": ("Слова мгновенного бана", "list", "words_ban",
                   "Через запятую. За любое слово — мгновенный бан."),
     "banned_words": ("Слова-предупреждения", "list", "words_warn",
@@ -123,18 +125,21 @@ async def render_texts() -> tuple[str, InlineKeyboardMarkup]:
     check = _esc(_short(await settings.get("check_template")))
     restrict = _esc(_short(await settings.get("restrict_message")))
     welcome = _esc(_short(await settings.get("welcome_text")))
+    dupwarn = _esc(_short(await settings.get("dup_warn_text")))
     text = (
         "📝 <b>Тексты</b>\n\n"
         f"<b>/ban 2:</b>\n{ban2}\n\n"
         f"<b>/check:</b>\n{check}\n\n"
         f"<b>«Ограничить»:</b>\n{restrict}\n\n"
-        f"<b>Приветствие:</b>\n{welcome}"
+        f"<b>Приветствие:</b>\n{welcome}\n\n"
+        f"<b>Предупреждение о повторах:</b>\n{dupwarn}"
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✍️ Изменить /ban 2", callback_data="e:ban_preset_2:texts")],
         [InlineKeyboardButton(text="✍️ Изменить /check", callback_data="e:check_template:texts")],
         [InlineKeyboardButton(text="✍️ Изменить «Ограничить»", callback_data="e:restrict_message:texts")],
         [InlineKeyboardButton(text="✍️ Изменить приветствие", callback_data="e:welcome_text:texts")],
+        [InlineKeyboardButton(text="✍️ Изменить предупр. о повторах", callback_data="e:dup_warn_text:texts")],
         _back_row(),
     ])
     return text, kb

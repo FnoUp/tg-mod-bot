@@ -149,6 +149,18 @@ def menu_markup() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[_menu_button()]])
 
 
+def quick_action_markup(chat_id: int, user_id: int) -> InlineKeyboardMarkup:
+    """Кнопки быстрых действий 🔇/🚫/👢 + панель (обрабатывает handlers/modactions)."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔇 Мут", callback_data=f"fm_mute:{chat_id}:{user_id}"),
+            InlineKeyboardButton(text="🚫 Бан", callback_data=f"fm_ban:{chat_id}:{user_id}"),
+            InlineKeyboardButton(text="👢 Кик", callback_data=f"fm_kick:{chat_id}:{user_id}"),
+        ],
+        [_menu_button()],
+    ])
+
+
 async def log_action(
     bot: Bot, log_chat_id: int | None, text: str, detail: str | None = None
 ) -> None:
