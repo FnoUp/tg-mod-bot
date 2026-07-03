@@ -9,7 +9,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from bot import database as db
 from bot import settings_store as settings
 from bot.config import config
-from bot.handlers import admin, check, newmembers, panel, undo
+from bot.handlers import admin, check, modactions, newmembers, panel, undo
 from bot.utils import access
 from bot.middlewares.antidup import AntiDuplicateMiddleware
 from bot.middlewares.antiflood import AntiFloodMiddleware
@@ -44,6 +44,7 @@ async def main() -> None:
 
     dp.include_router(panel.router)
     dp.include_router(undo.router)
+    dp.include_router(modactions.router)
     dp.include_router(admin.router)
     dp.include_router(check.router)
     dp.include_router(newmembers.router)
