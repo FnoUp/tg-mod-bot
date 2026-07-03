@@ -106,24 +106,26 @@ class AntiDuplicateMiddleware(BaseMiddleware):
 
         markup = quick_action_markup(event.chat.id, uid)
 
-        # deleted=True → это обычный участник (не админ чата): мьютим на сутки
+        # Уведомление о лимите в чат — ВСЕГДА при срабатывании (и участнику, и админу)
+        warn_text = (
+            (await settings.get("dup_warn_text"))
+            .replace("{user}", mention(event.from_user))
+            .replace("{limit}", str(limit))
+            .replace("{hours}", str(config.duplicate_window_hours))
+        )
+        if warn_text.strip():
+            try:
+                await bot.send_message(event.chat.id, warn_text)
+            except Exception:
+                pass
+
+        # deleted=True → обычный участник (не админ чата): мьютим на сутки
         if deleted:
             until = int(time.time()) + _DUP_MUTE_SECONDS
             muted = await mute_user(bot, event.chat.id, uid, until_date=until)
             if muted:
                 await db.add_action(event.chat.id, uid, "mute", label)
                 await db.add_log(f"🔇 Мьют {label} · авто: повтор одного сообщения (сутки)")
-                warn_text = (
-                    (await settings.get("dup_warn_text"))
-                    .replace("{user}", mention(event.from_user))
-                    .replace("{limit}", str(limit))
-                    .replace("{hours}", str(config.duplicate_window_hours))
-                )
-                if warn_text.strip():
-                    try:
-                        await bot.send_message(event.chat.id, warn_text)
-                    except Exception:
-                        pass
             note = "Выдан мут на сутки." if muted else "Не удалось замьютить (нет прав?)."
             await notify_admins(
                 bot,
