@@ -33,19 +33,28 @@ async def init_db(path: str) -> None:
         "user_id INTEGER NOT NULL, action TEXT NOT NULL, label TEXT NOT NULL)"
     )
     await _db.execute(
-        "CREATE TABLE IF NOT EXISTS seen_users ("
+        "CREATE TABLE IF NOT EXISTS pending_first_msg ("
         "chat_id INTEGER NOT NULL, user_id INTEGER NOT NULL, PRIMARY KEY (chat_id, user_id))"
     )
     await _db.commit()
 
 
-async def mark_seen_if_new(chat_id: int, user_id: int) -> bool:
-    """Отмечает пользователя как писавшего. True — если это его ПЕРВОЕ сообщение."""
-    cur = await _db.execute(
-        "INSERT OR IGNORE INTO seen_users (chat_id, user_id) VALUES (?, ?)", (chat_id, user_id)
+async def add_pending_first(chat_id: int, user_id: int) -> None:
+    """Отмечает вступившего участника — ждём его первое сообщение для уведомления."""
+    await _db.execute(
+        "INSERT OR IGNORE INTO pending_first_msg (chat_id, user_id) VALUES (?, ?)",
+        (chat_id, user_id),
     )
     await _db.commit()
-    return cur.rowcount == 1
+
+
+async def take_pending_first(chat_id: int, user_id: int) -> bool:
+    """True, если участник числился «новым» (и снимает эту отметку)."""
+    cur = await _db.execute(
+        "DELETE FROM pending_first_msg WHERE chat_id = ? AND user_id = ?", (chat_id, user_id)
+    )
+    await _db.commit()
+    return cur.rowcount > 0
 
 
 async def add_action(chat_id: int, user_id: int, action: str, label: str) -> None:

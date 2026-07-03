@@ -47,6 +47,9 @@ async def on_new_members(message: Message, bot: Bot) -> None:
         if user.is_bot or is_bot_admin(user.id):
             continue
 
+        # Отмечаем вступившего — чтобы уведомить о его ПЕРВОМ сообщении
+        await db.add_pending_first(message.chat.id, user.id)
+
         # Анти-рейд: при массовом входе новичков сразу мьютим (без капчи) и алертим админов
         if antiraid_on and await _is_raid(message.chat.id):
             until = int(time.time()) + config.raid_lockdown_minutes * 60

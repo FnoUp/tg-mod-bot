@@ -41,7 +41,9 @@ class MessageWatchMiddleware(BaseMiddleware):
             msgtrack.record(event.chat.id, uid, event.message_id)
 
             if not is_bot_admin(uid) and await settings.get_bool("notify_first_msg_enabled"):
-                if await db.mark_seen_if_new(event.chat.id, uid):
+                # take_pending_first вернёт True только для реально вступивших
+                # участников и только один раз (на их первом сообщении)
+                if await db.take_pending_first(event.chat.id, uid):
                     bot: Bot = data["bot"]
                     if not await _is_chat_admin(bot, event.chat.id, uid):
                         text = event.text or event.caption or ""
