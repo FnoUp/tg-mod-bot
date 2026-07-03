@@ -44,10 +44,10 @@ async def on_quick_action(callback: CallbackQuery, bot: Bot) -> None:
         if ok:
             await purge_user_messages(bot, chat_id, user_id)
             await db.add_action(chat_id, user_id, "mute", f"id {user_id}")
-            await db.add_log(f"🔇 Мьют id {user_id} · ручной {actor}: из уведомления")
+            await db.add_log(f"🔇 Мьют (вечный) id {user_id} · ручной {actor}: из уведомления")
             rows.append([InlineKeyboardButton(
                 text="↩️ Снять ограничения", callback_data=f"undo:mute:{chat_id}:{user_id}")])
-        result = "🔇 Замьючен." if ok else "⚠️ Не удалось (админ чата?)."
+        result = "🔇 Выдан вечный мут." if ok else "⚠️ Не удалось (админ чата?)."
     elif kind == "kick":
         ok = await kick_user(bot, chat_id, user_id)
         if ok:

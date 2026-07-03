@@ -153,7 +153,7 @@ def quick_action_markup(chat_id: int, user_id: int) -> InlineKeyboardMarkup:
     """Кнопки быстрых действий Мут(вечный)/Размут/Бан/Кик + панель (handlers/modactions)."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🔇 Мут", callback_data=f"fm_mute:{chat_id}:{user_id}"),
+            InlineKeyboardButton(text="🔇 Мут (вечный)", callback_data=f"fm_mute:{chat_id}:{user_id}"),
             InlineKeyboardButton(text="🔊 Размут", callback_data=f"fm_unmute:{chat_id}:{user_id}"),
         ],
         [
