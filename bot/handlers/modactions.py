@@ -11,7 +11,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from bot import database as db
 from bot.config import config
 from bot.utils.access import is_bot_admin
-from bot.utils.moderation import ban_user, kick_user, mute_user, purge_user_messages
+from bot.utils.moderation import ban_user, kick_user, mute_user, purge_user_messages, unmute_user
 
 router = Router(name="modactions")
 
@@ -54,6 +54,12 @@ async def on_quick_action(callback: CallbackQuery, bot: Bot) -> None:
             await db.add_action(chat_id, user_id, "kick", f"id {user_id}")
             await db.add_log(f"👢 Кик id {user_id} · ручной {actor}: из уведомления")
         result = "👢 Кикнут." if ok else "⚠️ Не удалось (админ чата?)."
+    elif kind == "unmute":
+        ok = await unmute_user(bot, chat_id, user_id)
+        if ok:
+            await db.delete_action(chat_id, user_id, "mute")
+            await db.add_log(f"🔊 Снятие мьюта id {user_id} · ручной {actor}")
+        result = "🔊 Размьючен." if ok else "⚠️ Не удалось."
     else:
         await callback.answer("Неизвестное действие.", show_alert=True)
         return

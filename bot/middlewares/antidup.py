@@ -17,15 +17,22 @@ from aiogram import BaseMiddleware, Bot
 from aiogram.enums import ChatType
 from aiogram.types import Message
 
+from bot import database as db
 from bot import settings_store as settings
 from bot.config import config
 from bot.utils.access import is_bot_admin
-from bot.utils.moderation import mention, notify_admins, quick_action_markup, safe_delete
+from bot.utils.moderation import (
+    mention,
+    mute_user,
+    notify_admins,
+    quick_action_markup,
+    safe_delete,
+)
 
 # Сколько разных текстов хранить на пользователя (защита от роста памяти)
 _TRACK_PER_USER = 40
-# Интервал предупреждения нарушителя в чате — раз в 24 часа на человека
-_WARN_INTERVAL = 24 * 3600
+# Мут за спам повторами — на сутки
+_DUP_MUTE_SECONDS = 24 * 3600
 
 _whitespace = re.compile(r"\s+")
 
@@ -40,8 +47,6 @@ class AntiDuplicateMiddleware(BaseMiddleware):
         self._seen: dict[tuple[int, int], "OrderedDict[int, deque[float]]"] = defaultdict(
             OrderedDict
         )
-        # (chat_id, user_id) -> время последнего предупреждения в чате (wall clock)
-        self._last_warn: dict[tuple[int, int], float] = {}
 
     async def __call__(
         self,
@@ -95,37 +100,42 @@ class AntiDuplicateMiddleware(BaseMiddleware):
         snippet = _whitespace.sub(" ", (event.text or event.caption or "")).strip()[:200] or "(медиа)"
         uid = event.from_user.id
 
-        # Одноразовое (раз в 24 ч) предупреждение самому нарушителю в чат
+        # Реагируем один раз — в момент превышения лимита (дальше юзер уже в муте)
+        if count != limit + 1:
+            return None
+
+        markup = quick_action_markup(event.chat.id, uid)
+
+        # deleted=True → это обычный участник (не админ чата): мьютим на сутки
         if deleted:
-            wall = time.time()
-            if wall - self._last_warn.get(key, 0) >= _WARN_INTERVAL:
-                self._last_warn[key] = wall
-                warn_text = (await settings.get("dup_warn_text")).replace(
-                    "{user}", mention(event.from_user)
+            until = int(time.time()) + _DUP_MUTE_SECONDS
+            muted = await mute_user(bot, event.chat.id, uid, until_date=until)
+            if muted:
+                await db.add_action(event.chat.id, uid, "mute", label)
+                await db.add_log(f"🔇 Мьют {label} · авто: повтор одного сообщения (сутки)")
+                warn_text = (
+                    (await settings.get("dup_warn_text"))
+                    .replace("{user}", mention(event.from_user))
+                    .replace("{limit}", str(limit))
+                    .replace("{hours}", str(config.duplicate_window_hours))
                 )
                 if warn_text.strip():
                     try:
                         await bot.send_message(event.chat.id, warn_text)
                     except Exception:
                         pass
-
-        # Уведомляем админов только в момент первого превышения, чтобы не спамить ЛС
-        if count == limit + 1:
-            markup = quick_action_markup(event.chat.id, uid)
-            if deleted:
-                await notify_admins(
-                    bot,
-                    f"🧹 {label} (id {uid}) повторяет одно и то же сообщение "
-                    f"(лимит {limit} за {config.duplicate_window_hours} ч превышен) в «{event.chat.title}».\n"
-                    f"💬 {snippet}",
-                    reply_markup=markup,
-                )
-            else:
-                await notify_admins(
-                    bot,
-                    f"⚠️ {label} (id {uid}) спамит повторами в «{event.chat.title}», но бот НЕ может "
-                    f"удалить его сообщения — это администратор чата. Снимите с него права.\n"
-                    f"💬 {snippet}",
-                    reply_markup=markup,
-                )
+            note = "Выдан мут на сутки." if muted else "Не удалось замьютить (нет прав?)."
+            await notify_admins(
+                bot,
+                f"🧹 {label} (id {uid}) спамит повтором в «{event.chat.title}». {note}\n💬 {snippet}",
+                reply_markup=markup,
+            )
+        else:
+            # Сообщение не удалилось → это администратор чата, бот его трогать не может
+            await notify_admins(
+                bot,
+                f"⚠️ {label} (id {uid}) спамит повторами в «{event.chat.title}», но бот НЕ может "
+                f"удалить/замьютить — это администратор чата. Снимите с него права.\n💬 {snippet}",
+                reply_markup=markup,
+            )
         return None
