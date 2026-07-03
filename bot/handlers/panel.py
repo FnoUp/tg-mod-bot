@@ -73,6 +73,7 @@ TOGGLES: dict[str, tuple[str, str]] = {
     "antiraid_enabled": ("Антирейд (массовый вход)", "modules"),
     "antidup_enabled": ("Лимит повторов", "modules"),
     "welcome_enabled": ("Приветствие новичков", "modules"),
+    "notify_first_msg_enabled": ("Уведомлять о первом сообщении", "modules"),
     "delete_links": ("Удалять ссылки", "filters"),
     "cas_check_enabled": ("CAS-проверка спамеров", "filters"),
 }
@@ -159,6 +160,8 @@ async def render_modules() -> tuple[str, InlineKeyboardMarkup]:
         "заданного числа раз (борьба с рекламщиками).\n\n"
         "👋 <b>Приветствие новичков</b> — после прохождения капчи присылает "
         "новичку приветствие и правила (текст — в разделе «Тексты»).\n\n"
+        "🆕 <b>Уведомлять о первом сообщении</b> — присылает тебе в ЛС, когда "
+        "новый участник впервые пишет в чат (с текстом сообщения).\n\n"
         "Нажми на модуль, чтобы включить или выключить его."
     )
     return text, InlineKeyboardMarkup(inline_keyboard=rows)

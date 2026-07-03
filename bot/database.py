@@ -32,7 +32,20 @@ async def init_db(path: str) -> None:
         "id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, chat_id INTEGER NOT NULL, "
         "user_id INTEGER NOT NULL, action TEXT NOT NULL, label TEXT NOT NULL)"
     )
+    await _db.execute(
+        "CREATE TABLE IF NOT EXISTS seen_users ("
+        "chat_id INTEGER NOT NULL, user_id INTEGER NOT NULL, PRIMARY KEY (chat_id, user_id))"
+    )
     await _db.commit()
+
+
+async def mark_seen_if_new(chat_id: int, user_id: int) -> bool:
+    """Отмечает пользователя как писавшего. True — если это его ПЕРВОЕ сообщение."""
+    cur = await _db.execute(
+        "INSERT OR IGNORE INTO seen_users (chat_id, user_id) VALUES (?, ?)", (chat_id, user_id)
+    )
+    await _db.commit()
+    return cur.rowcount == 1
 
 
 async def add_action(chat_id: int, user_id: int, action: str, label: str) -> None:

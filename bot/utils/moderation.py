@@ -15,6 +15,7 @@ from aiogram.types import ChatPermissions, InlineKeyboardButton, InlineKeyboardM
 
 from bot import database as db
 from bot.config import config
+from bot.utils import msgtrack
 from bot.utils.access import is_bot_admin
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,12 @@ async def _safe(coro: Awaitable) -> bool:
         return False
 
 
+async def purge_user_messages(bot: Bot, chat_id: int, user_id: int) -> None:
+    """Удаляет все известные боту сообщения пользователя (сверх revoke_messages)."""
+    for message_id in msgtrack.pop_all(chat_id, user_id):
+        await _safe(bot.delete_message(chat_id, message_id))
+
+
 async def ban_user(
     bot: Bot,
     chat_id: int,
@@ -77,11 +84,14 @@ async def ban_user(
         logger.info("Отказ: попытка забанить админа бота %s", user_id)
         return False
     # revoke_messages=True — Telegram удаляет ВСЕ сообщения пользователя в чате
-    return await _safe(
+    ok = await _safe(
         bot.ban_chat_member(
             chat_id, user_id, until_date=until_date, revoke_messages=revoke_messages
         )
     )
+    if ok:
+        await purge_user_messages(bot, chat_id, user_id)
+    return ok
 
 
 async def mute_user(bot: Bot, chat_id: int, user_id: int, until_date: int | None = None) -> bool:

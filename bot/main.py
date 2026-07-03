@@ -14,6 +14,7 @@ from bot.utils import access
 from bot.middlewares.antidup import AntiDuplicateMiddleware
 from bot.middlewares.antiflood import AntiFloodMiddleware
 from bot.middlewares.antispam import AntiSpamMiddleware
+from bot.middlewares.watch import MessageWatchMiddleware
 
 
 async def _background_loop(bot: Bot) -> None:
@@ -36,6 +37,7 @@ async def main() -> None:
     bot = Bot(token=config.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
 
+    dp.message.outer_middleware(MessageWatchMiddleware())
     dp.message.outer_middleware(AntiFloodMiddleware())
     dp.message.outer_middleware(AntiSpamMiddleware())
     dp.message.outer_middleware(AntiDuplicateMiddleware())

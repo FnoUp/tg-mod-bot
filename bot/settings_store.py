@@ -46,6 +46,7 @@ DEFAULTS: dict[str, str] = {
     "antiraid_enabled": "true",
     "antidup_enabled": "true",
     "welcome_enabled": "true",
+    "notify_first_msg_enabled": "true",
     # Фильтры
     "delete_links": "true" if config.delete_links else "false",
     "cas_check_enabled": "true" if config.cas_check_enabled else "false",

@@ -15,6 +15,7 @@ from bot.utils.moderation import (
     mute_user,
     notify_admins,
     punish_log,
+    purge_user_messages,
     safe_delete,
 )
 
@@ -92,6 +93,8 @@ async def on_check_action(callback: CallbackQuery, bot: Bot) -> None:
         until = int(datetime.now(tz=timezone.utc).timestamp()) + RESTRICT_SECONDS
         ok = await mute_user(bot, chat_id, user_id, until_date=until)
         if ok:
+            # Ограничение не удаляет сообщения само — чистим известные вручную
+            await purge_user_messages(bot, chat_id, user_id)
             # Публикуем в чате текст-предупреждение об ограничении с упоминанием
             try:
                 member = await bot.get_chat_member(chat_id, user_id)
