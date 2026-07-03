@@ -1,8 +1,8 @@
 """Лимит на одинаковые (повторяющиеся) сообщения от одного пользователя.
 
-Сценарий: у некоторых участников есть админка в чате, и они публикуют одну и ту
-же рекламу помногу раз в день. Модуль считает повторы одинакового текста и после
-DUPLICATE_LIMIT удаляет последующие копии.
+Счётчик считается ПОСУТОЧНО и обнуляется в 00:00 по Пермскому времени (UTC+5):
+за один календарный день (по Перми) разрешено не более DUPLICATE_LIMIT одинаковых
+сообщений; в полночь счётчик сбрасывается у всех.
 
 Важно: администраторов чата Telegram API удалять НЕ позволяет. Если повтор пришёл
 от такого пользователя, бот не сможет удалить сообщение и уведомит админов бота с
@@ -10,7 +10,8 @@ DUPLICATE_LIMIT удаляет последующие копии.
 """
 import re
 import time
-from collections import OrderedDict, defaultdict, deque
+from collections import OrderedDict, defaultdict
+from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware, Bot
@@ -33,6 +34,8 @@ from bot.utils.moderation import (
 _TRACK_PER_USER = 40
 # Мут за спам повторами — на сутки
 _DUP_MUTE_SECONDS = 24 * 3600
+# Пермское время (UTC+5) — по нему считаются календарные сутки
+_PERM_TZ = timezone(timedelta(hours=5))
 
 _whitespace = re.compile(r"\s+")
 
@@ -41,10 +44,15 @@ def _normalize(text: str) -> str:
     return _whitespace.sub(" ", text.strip().lower())
 
 
+def _perm_day() -> int:
+    """Номер календарного дня по Перми (меняется в 00:00 по Перми → сброс счётчика)."""
+    return datetime.now(_PERM_TZ).toordinal()
+
+
 class AntiDuplicateMiddleware(BaseMiddleware):
     def __init__(self) -> None:
-        # (chat_id, user_id) -> OrderedDict[text_hash, deque[timestamps]]
-        self._seen: dict[tuple[int, int], "OrderedDict[int, deque[float]]"] = defaultdict(
+        # (chat_id, user_id) -> OrderedDict[text_hash, [день, счётчик]]
+        self._seen: dict[tuple[int, int], "OrderedDict[int, list[int]]"] = defaultdict(
             OrderedDict
         )
 
@@ -71,26 +79,22 @@ class AntiDuplicateMiddleware(BaseMiddleware):
         limit = await settings.get_int("duplicate_limit", config.duplicate_limit)
         key = (event.chat.id, event.from_user.id)
         text_hash = hash(normalized)
-        now = time.monotonic()
-        window = config.duplicate_window_hours * 3600
+        today = _perm_day()
 
         bucket = self._seen[key]
-        timestamps = bucket.get(text_hash)
-        if timestamps is None:
-            timestamps = deque()
-            bucket[text_hash] = timestamps
+        entry = bucket.get(text_hash)
+        if entry is None or entry[0] != today:
+            # Новый текст или наступили новые сутки по Перми → счётчик с нуля
+            entry = [today, 0]
+            bucket[text_hash] = entry
         bucket.move_to_end(text_hash)
-
-        cutoff = now - window
-        while timestamps and timestamps[0] < cutoff:
-            timestamps.popleft()
-        timestamps.append(now)
+        entry[1] += 1
 
         # Ограничиваем число отслеживаемых текстов на пользователя
         while len(bucket) > _TRACK_PER_USER:
             bucket.popitem(last=False)
 
-        count = len(timestamps)
+        count = entry[1]
         if count <= limit:
             return await handler(event, data)
 
