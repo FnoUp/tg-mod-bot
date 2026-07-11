@@ -51,7 +51,7 @@ DEFAULTS: dict[str, str] = {
     "antiflood_enabled": "true",
     "antiraid_enabled": "true",
     "antidup_enabled": "true",
-    "welcome_enabled": "true",
+    "welcome_enabled": "false",
     "notify_first_msg_enabled": "true",
     # Фильтры
     "delete_links": "true" if config.delete_links else "false",
