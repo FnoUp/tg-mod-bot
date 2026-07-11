@@ -107,7 +107,8 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
         ok = await ban_user(bot, message.chat.id, user_id)
         await db.reset_warns(message.chat.id, user_id)
         if ok:
-            await message.reply_to_message.reply(preset_text)
+            # отдельным сообщением (не reply): revoke_messages удаляет сообщение цели
+            await bot.send_message(message.chat.id, preset_text)
             await punish_log(
                 bot, config.log_chat_id, f"🚫 Бан {label} · ручной {actor}: пресет 2",
                 action="ban", chat_id=message.chat.id, user_id=user_id, label=label, detail=snippet,

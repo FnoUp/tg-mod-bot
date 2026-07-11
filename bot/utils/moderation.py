@@ -73,6 +73,32 @@ async def purge_user_messages(bot: Bot, chat_id: int, user_id: int) -> None:
         await _safe(bot.delete_message(chat_id, message_id))
 
 
+# Чаты, где уже предупредили об отсутствии права удалять сообщения (раз за сессию)
+_warned_no_delete: set[int] = set()
+
+
+async def can_delete_messages(bot: Bot, chat_id: int) -> bool:
+    """Есть ли у бота право администратора «Удаление сообщений» в этом чате."""
+    try:
+        member = await bot.get_chat_member(chat_id, bot.id)
+        return bool(getattr(member, "can_delete_messages", False))
+    except Exception:
+        return True  # не смогли проверить — не паникуем
+
+
+async def _warn_if_cant_delete(bot: Bot, chat_id: int) -> None:
+    if chat_id in _warned_no_delete:
+        return
+    if not await can_delete_messages(bot, chat_id):
+        _warned_no_delete.add(chat_id)
+        await notify_admins(
+            bot,
+            "⚠️ У меня НЕТ права администратора «Удаление сообщений» в этом чате — "
+            "поэтому сообщения забаненных не стираются. Выдайте боту это право "
+            "(Настройки чата → Администраторы → бот → «Удаление сообщений»).",
+        )
+
+
 async def ban_user(
     bot: Bot,
     chat_id: int,
@@ -91,6 +117,7 @@ async def ban_user(
     )
     if ok:
         await purge_user_messages(bot, chat_id, user_id)
+        await _warn_if_cant_delete(bot, chat_id)
     return ok
 
 
