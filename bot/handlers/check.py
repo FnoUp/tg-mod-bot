@@ -40,7 +40,10 @@ async def cmd_check(message: Message, bot: Bot) -> None:
     offset_hours = await settings.get_int("check_offset_hours", 1)
     deadline = (datetime.now(PERM_TZ) + timedelta(hours=offset_hours)).strftime("%H:%M")
     template = await settings.get("check_template")
-    text = template.replace("{time}", deadline)
+    tag = f"@{target.username}" if target.username else mention(target)
+    text = template.replace("{time}", deadline).replace("{user}", tag)
+    if tag not in text:  # тег участника — всегда внизу
+        text = f"{text}\n\n{tag}"
 
     await message.reply_to_message.reply(text)
     await safe_delete(bot, message.chat.id, message.message_id)
