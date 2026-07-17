@@ -48,10 +48,11 @@ class MessageWatchMiddleware(BaseMiddleware):
                     if not await _is_chat_admin(bot, event.chat.id, uid):
                         text = event.text or event.caption or ""
                         snippet = " ".join(text.split())[:200] or "(медиа / без текста)"
+                        tag = f"@{event.from_user.username}" if event.from_user.username else mention(event.from_user)
                         await notify_admins(
                             bot,
                             f"🆕 Первое сообщение от {mention(event.from_user)} "
-                            f"(id {uid}) в «{event.chat.title}»:\n💬 {snippet}",
+                            f"(id {uid}) в «{event.chat.title}»:\n💬 {snippet}\n\n{tag}",
                             reply_markup=quick_action_markup(event.chat.id, uid),
                         )
 

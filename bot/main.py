@@ -52,7 +52,8 @@ async def main() -> None:
     background_task = asyncio.create_task(_background_loop(bot))
     try:
         await bot.delete_webhook(drop_pending_updates=True)
-        await dp.start_polling(bot)
+        # allowed_updates из зарегистрированных хендлеров — включает chat_member
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         background_task.cancel()
         await db.close_db()

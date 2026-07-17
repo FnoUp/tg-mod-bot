@@ -2,8 +2,10 @@ import time
 from collections import defaultdict, deque
 
 from aiogram import Bot, F, Router
+from aiogram.enums import ChatMemberStatus
 from aiogram.types import (
     CallbackQuery,
+    ChatMemberUpdated,
     ChatPermissions,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -17,6 +19,21 @@ from bot.utils.access import is_bot_admin
 from bot.utils.moderation import kick_user, log_action, mention, mute_user, punish_log, safe_delete
 
 router = Router(name="newmembers")
+
+# Статусы, при переходе из которых считаем, что пользователь ВСТУПИЛ
+_OUTSIDE = {ChatMemberStatus.LEFT, ChatMemberStatus.KICKED}
+_INSIDE = {ChatMemberStatus.MEMBER, ChatMemberStatus.RESTRICTED, ChatMemberStatus.ADMINISTRATOR}
+
+
+@router.chat_member()
+async def on_chat_member_update(event: ChatMemberUpdated) -> None:
+    """Ловит вступления надёжно (в т.ч. по ссылке, где нет new_chat_members).
+    Отмечает нового участника — ждём его первое сообщение для уведомления."""
+    user = event.new_chat_member.user
+    if user.is_bot or is_bot_admin(user.id):
+        return
+    if event.old_chat_member.status in _OUTSIDE and event.new_chat_member.status in _INSIDE:
+        await db.add_pending_first(event.chat.id, user.id)
 
 RESTRICT_PERMISSIONS = ChatPermissions(can_send_messages=False)
 
